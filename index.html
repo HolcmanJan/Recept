@@ -10,11 +10,16 @@
     <header>
         <div class="container header-inner">
             <h1>Moje recepty</h1>
-            <button id="btn-new" class="btn btn-primary">+ Nový recept</button>
+            <div class="header-actions">
+                <div id="auth-area" class="auth-area"></div>
+                <button id="btn-new" class="btn btn-primary">+ Nový recept</button>
+            </div>
         </div>
     </header>
 
     <main class="container">
+        <div id="sync-banner" class="sync-banner hidden"></div>
+
         <!-- Seznam receptů -->
         <section id="view-list" class="view">
             <div class="toolbar">
@@ -107,6 +112,6 @@
         </section>
     </main>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
