@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moje recepty</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <h1>Moje recepty</h1>
+            <button id="btn-new" class="btn btn-primary">+ Nový recept</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Seznam receptů -->
+        <section id="view-list" class="view">
+            <div class="toolbar">
+                <input type="search" id="search" placeholder="Hledat recept...">
+                <select id="filter-category">
+                    <option value="">Všechny kategorie</option>
+                    <option value="Předkrm">Předkrm</option>
+                    <option value="Polévka">Polévka</option>
+                    <option value="Hlavní jídlo">Hlavní jídlo</option>
+                    <option value="Příloha">Příloha</option>
+                    <option value="Salát">Salát</option>
+                    <option value="Dezert">Dezert</option>
+                    <option value="Pečivo">Pečivo</option>
+                    <option value="Nápoj">Nápoj</option>
+                    <option value="Ostatní">Ostatní</option>
+                </select>
+            </div>
+            <div id="recipes" class="recipes-grid"></div>
+            <p id="empty-state" class="empty-state hidden">
+                Zatím tu nejsou žádné recepty. Klikni na <strong>+ Nový recept</strong> a přidej svůj první!
+            </p>
+        </section>
+
+        <!-- Detail receptu -->
+        <section id="view-detail" class="view hidden">
+            <button class="btn btn-link" id="btn-back">&larr; Zpět na seznam</button>
+            <article id="detail-content"></article>
+        </section>
+
+        <!-- Formulář -->
+        <section id="view-form" class="view hidden">
+            <button class="btn btn-link" id="btn-cancel">&larr; Zrušit</button>
+            <form id="recipe-form">
+                <h2 id="form-title">Nový recept</h2>
+
+                <label>
+                    Název *
+                    <input type="text" name="title" required maxlength="120">
+                </label>
+
+                <div class="row">
+                    <label>
+                        Kategorie
+                        <select name="category">
+                            <option value="Hlavní jídlo">Hlavní jídlo</option>
+                            <option value="Předkrm">Předkrm</option>
+                            <option value="Polévka">Polévka</option>
+                            <option value="Příloha">Příloha</option>
+                            <option value="Salát">Salát</option>
+                            <option value="Dezert">Dezert</option>
+                            <option value="Pečivo">Pečivo</option>
+                            <option value="Nápoj">Nápoj</option>
+                            <option value="Ostatní">Ostatní</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        Počet porcí
+                        <input type="number" name="servings" min="1" max="99" value="4">
+                    </label>
+
+                    <label>
+                        Doba přípravy (min)
+                        <input type="number" name="time" min="1" max="9999" value="30">
+                    </label>
+                </div>
+
+                <label>
+                    Suroviny (každá na nový řádek)
+                    <textarea name="ingredients" rows="8"
+                        placeholder="500 g hladké mouky&#10;2 vejce&#10;špetka soli"></textarea>
+                </label>
+
+                <label>
+                    Postup
+                    <textarea name="instructions" rows="10"
+                        placeholder="1. Smíchej suché suroviny...&#10;2. Přidej vejce..."></textarea>
+                </label>
+
+                <label>
+                    Poznámky
+                    <textarea name="notes" rows="3"
+                        placeholder="Tipy, varianty, odkud recept pochází..."></textarea>
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Uložit</button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
