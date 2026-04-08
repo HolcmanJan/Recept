@@ -1,8 +1,6 @@
 import {
     auth,
     db,
-    signInWithGoogle,
-    signOutUser,
     onAuthStateChanged,
 } from "./firebase-init.js";
 import {
@@ -36,7 +34,6 @@ const filterEl = document.getElementById("filter-category");
 const detailContentEl = document.getElementById("detail-content");
 const formEl = document.getElementById("recipe-form");
 const formTitleEl = document.getElementById("form-title");
-const authAreaEl = document.getElementById("auth-area");
 const syncBannerEl = document.getElementById("sync-banner");
 
 // ----- Inicializace -----
@@ -48,7 +45,6 @@ filterEl.addEventListener("change", renderList);
 formEl.addEventListener("submit", handleFormSubmit);
 
 initHamburger();
-renderAuthArea();
 renderMenuAuth(currentUser, authReady);
 renderSyncBanner();
 showList();
@@ -86,41 +82,9 @@ onAuthStateChanged(auth, (user) => {
         refreshDetailIfOpen();
     }
 
-    renderAuthArea();
     renderMenuAuth(currentUser, authReady);
     renderSyncBanner();
 });
-
-function renderAuthArea() {
-    authAreaEl.innerHTML = "";
-    if (!authReady) {
-        const span = document.createElement("span");
-        span.className = "auth-loading";
-        span.textContent = "…";
-        authAreaEl.appendChild(span);
-        return;
-    }
-
-    if (currentUser) {
-        const info = document.createElement("span");
-        info.className = "auth-user";
-        const name = currentUser.displayName || currentUser.email || "přihlášen";
-        info.textContent = name;
-        authAreaEl.appendChild(info);
-
-        const btn = document.createElement("button");
-        btn.className = "btn btn-secondary btn-sm";
-        btn.textContent = "Odhlásit";
-        btn.addEventListener("click", signOutUser);
-        authAreaEl.appendChild(btn);
-    } else {
-        const btn = document.createElement("button");
-        btn.className = "btn btn-secondary";
-        btn.textContent = "Přihlásit se Googlem";
-        btn.addEventListener("click", signInWithGoogle);
-        authAreaEl.appendChild(btn);
-    }
-}
 
 function renderSyncBanner() {
     if (!authReady) {
