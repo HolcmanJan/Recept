@@ -638,3 +638,305 @@ body.menu-open {
 .tile-recipes h3 {
     color: var(--primary);
 }
+
+/* ============ Samostatná sekce menu pro Nastavení ============ */
+.side-menu-nav-settings {
+    padding: 0.25rem 0 0.75rem;
+}
+
+.side-menu-nav-settings a {
+    font-weight: 500;
+}
+
+/* ============ Stránka Nastavení ============ */
+.settings-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+    box-shadow: var(--shadow);
+}
+
+.settings-section h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.1rem;
+    color: var(--primary);
+}
+
+.settings-desc {
+    margin: 0 0 1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.settings-item,
+.settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    text-decoration: none;
+    color: var(--text);
+    text-align: left;
+    font-family: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s;
+}
+
+.settings-item:hover,
+.settings-toggle:hover {
+    border-color: var(--primary);
+    background: var(--surface);
+}
+
+.settings-toggle {
+    cursor: pointer;
+}
+
+.settings-toggle input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.settings-item-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.settings-item-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.settings-item-body strong {
+    font-weight: 600;
+}
+
+.settings-item-body span {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.settings-item-arrow {
+    font-size: 1.5rem;
+    color: var(--muted);
+    flex-shrink: 0;
+}
+
+.settings-item-danger {
+    color: #b91c1c;
+}
+
+.settings-item-danger:hover {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+.settings-version {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 1.5rem;
+}
+
+/* ============ Stránka Záložky ============ */
+.bookmarks-intro {
+    margin-bottom: 1rem;
+    color: var(--muted);
+}
+
+.bookmark-form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.bookmark-form input[type="url"] {
+    flex: 1;
+    min-width: 220px;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background: var(--surface);
+    font-family: inherit;
+}
+
+.bookmark-form input[type="url"]:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.bookmark-status {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+}
+
+.bookmark-status-info {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1e40af;
+}
+
+.bookmark-status-ok {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+.bookmark-status-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #991b1b;
+}
+
+.bookmarks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.bookmark-tile {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex;
+    flex-direction: column;
+}
+
+.bookmark-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
+}
+
+.bookmark-link {
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: var(--text);
+    height: 100%;
+}
+
+.bookmark-image {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #f3f4f6;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    font-size: 2rem;
+}
+
+.bookmark-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.bookmark-image-fallback {
+    background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%);
+    color: #92400e;
+}
+
+.bookmark-body {
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+}
+
+.bookmark-body h3 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.3;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.bookmark-description {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.bookmark-domain {
+    margin: auto 0 0;
+    font-size: 0.78rem;
+    color: var(--primary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bookmark-delete {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.92);
+    color: #b91c1c;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+}
+
+.bookmark-delete:hover {
+    background: #fee2e2;
+}
+
+.scroll-sentinel {
+    height: 1px;
+}
+
+.bookmarks-end {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 1rem 0 2rem;
+}

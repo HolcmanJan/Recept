@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nastavení</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <div class="header-left">
+                <button id="hamburger-btn" class="hamburger" aria-label="Otevřít menu">☰</button>
+                <h1>Nastavení</h1>
+            </div>
+        </div>
+    </header>
+
+    <div id="side-menu-root"></div>
+
+    <main class="container">
+        <section class="settings-section">
+            <h2>Aplikace</h2>
+            <p class="settings-desc">Další funkce a nástroje v aplikaci.</p>
+            <div class="settings-list">
+                <a href="zalozky.html" class="settings-item">
+                    <span class="settings-item-icon">📑</span>
+                    <span class="settings-item-body">
+                        <strong>Moje záložky</strong>
+                        <span>Seznam uložených odkazů s náhledem.</span>
+                    </span>
+                    <span class="settings-item-arrow">›</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>Zobrazení</h2>
+            <div class="settings-list">
+                <label class="settings-toggle">
+                    <span class="settings-item-body">
+                        <strong>Kompaktní dlaždice receptů</strong>
+                        <span>Zobrazovat v seznamu receptů menší karty.</span>
+                    </span>
+                    <input type="checkbox" id="toggle-compact">
+                </label>
+                <label class="settings-toggle">
+                    <span class="settings-item-body">
+                        <strong>Potvrzovat mazání</strong>
+                        <span>Před smazáním receptu zobrazit dotaz.</span>
+                    </span>
+                    <input type="checkbox" id="toggle-confirm-delete">
+                </label>
+            </div>
+        </section>
+
+        <section class="settings-section">
+            <h2>Data</h2>
+            <div class="settings-list">
+                <button id="btn-clear-local" class="settings-item settings-item-danger">
+                    <span class="settings-item-icon">🗑</span>
+                    <span class="settings-item-body">
+                        <strong>Smazat lokální data</strong>
+                        <span>Vymaže recepty a záložky uložené v tomto prohlížeči (netýká se dat v cloudu).</span>
+                    </span>
+                </button>
+            </div>
+        </section>
+
+        <p class="settings-version">Moje aplikace v1.0</p>
+    </main>
+
+    <script type="module" src="nastaveni.js"></script>
+</body>
+</html>

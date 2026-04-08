@@ -6,7 +6,7 @@ import {
     deleteDoc,
     onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { initHamburger, initMenuAuth } from "./navigation.js";
+import { initNavigation } from "./navigation.js";
 
 // ----- Stav aplikace -----
 const STORAGE_KEY = "recept.recipes.v1";
@@ -40,12 +40,11 @@ searchEl.addEventListener("input", renderList);
 filterEl.addEventListener("change", renderList);
 formEl.addEventListener("submit", handleFormSubmit);
 
-initHamburger();
 renderSyncBanner();
 showList();
 
-// Inicializuj auth UI (včetně hamburger menu) a reaguj na změny.
-initMenuAuth((user) => {
+// Inicializuj navigaci (side menu + hamburger + auth UI) a reaguj na změny uživatele.
+initNavigation("recepty", (user) => {
     authReady = true;
     currentUser = user;
 
