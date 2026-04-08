@@ -1,4 +1,4 @@
-// Sdílená logika pro hamburger menu a auth UI (používá ji každá stránka aplikace).
+// Sdílená logika pro hamburger menu, navigaci a auth UI (používá ji každá stránka).
 import {
     auth,
     onAuthStateChanged,
@@ -6,7 +6,62 @@ import {
     signOutUser,
 } from "./firebase-init.js";
 
-export function initHamburger() {
+const NAV_ITEMS = [
+    { key: "home", label: "🏠 Domů", href: "index.html" },
+    { key: "recepty", label: "🍳 Recepty", href: "recepty.html" },
+    { key: "cviceni", label: "💪 Cvičení", note: "připravujeme" },
+    { key: "hry", label: "🎮 Hry", note: "připravujeme" },
+];
+
+// Jednotný vstupní bod pro inicializaci navigace na stránce.
+export function initNavigation(activePage, onUserChange) {
+    renderSideMenu(activePage);
+    initHamburger();
+    initMenuAuth(onUserChange);
+}
+
+function renderSideMenu(activePage) {
+    const root = document.getElementById("side-menu-root");
+    if (!root) return;
+
+    const navHtml = NAV_ITEMS.map((item) => {
+        if (item.href) {
+            const cls = item.key === activePage ? ' class="active"' : "";
+            return `<a href="${item.href}"${cls}>${item.label}</a>`;
+        }
+        return `<span class="menu-disabled">${item.label} <em>(${item.note})</em></span>`;
+    }).join("");
+
+    const isSettingsActive =
+        activePage === "nastaveni" || activePage === "zalozky";
+    const settingsCls = isSettingsActive ? ' class="active"' : "";
+
+    root.innerHTML = `
+        <div id="hamburger-backdrop" class="hamburger-backdrop hidden"></div>
+        <aside id="side-menu" class="side-menu">
+            <div class="side-menu-header">
+                <h2>Menu</h2>
+                <button id="close-menu" class="close-btn" aria-label="Zavřít menu">×</button>
+            </div>
+            <nav class="side-menu-nav">
+                ${navHtml}
+            </nav>
+            <nav class="side-menu-nav side-menu-nav-settings">
+                <a href="nastaveni.html"${settingsCls}>⚙ Nastavení</a>
+            </nav>
+            <div class="side-menu-section">
+                <h3>Účet</h3>
+                <div id="menu-auth-area"></div>
+            </div>
+            <div class="side-menu-section side-menu-footer">
+                <h3>O aplikaci</h3>
+                <p>Moje aplikace v1.0</p>
+            </div>
+        </aside>
+    `;
+}
+
+function initHamburger() {
     const btn = document.getElementById("hamburger-btn");
     const menu = document.getElementById("side-menu");
     const backdrop = document.getElementById("hamburger-backdrop");
@@ -32,9 +87,7 @@ export function initHamburger() {
     });
 }
 
-// Inicializuje auth UI v postranním menu a volitelně volá callback při každé změně
-// stavu uživatele (pro stránky, které na tom staví svou další logiku).
-export function initMenuAuth(onUserChange) {
+function initMenuAuth(onUserChange) {
     renderMenuAuth(null, false);
     onAuthStateChanged(auth, (user) => {
         renderMenuAuth(user, true);
@@ -88,7 +141,8 @@ function renderMenuAuth(user, authReady) {
     } else {
         const p = document.createElement("p");
         p.className = "menu-hint";
-        p.textContent = "Přihlaš se, aby se data synchronizovala mezi všemi tvými zařízeními.";
+        p.textContent =
+            "Přihlaš se, aby se data synchronizovala mezi všemi tvými zařízeními.";
         container.appendChild(p);
 
         const btn = document.createElement("button");

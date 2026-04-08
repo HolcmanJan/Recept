@@ -16,28 +16,8 @@
         </div>
     </header>
 
-    <!-- Hamburger side menu -->
-    <div id="hamburger-backdrop" class="hamburger-backdrop hidden"></div>
-    <aside id="side-menu" class="side-menu">
-        <div class="side-menu-header">
-            <h2>Menu</h2>
-            <button id="close-menu" class="close-btn" aria-label="Zavřít menu">×</button>
-        </div>
-        <nav class="side-menu-nav">
-            <a href="index.html" class="active">🏠 Domů</a>
-            <a href="recepty.html">🍳 Recepty</a>
-            <span class="menu-disabled">💪 Cvičení <em>(připravujeme)</em></span>
-            <span class="menu-disabled">🎮 Hry <em>(připravujeme)</em></span>
-        </nav>
-        <div class="side-menu-section">
-            <h3>Nastavení</h3>
-            <div id="menu-auth-area"></div>
-        </div>
-        <div class="side-menu-section side-menu-footer">
-            <h3>O aplikaci</h3>
-            <p>Moje aplikace v1.0</p>
-        </div>
-    </aside>
+    <!-- Hamburger side menu (injektuje navigation.js) -->
+    <div id="side-menu-root"></div>
 
     <main class="container">
         <section class="home-hero">

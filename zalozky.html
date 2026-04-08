@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moje záložky</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <div class="header-left">
+                <button id="hamburger-btn" class="hamburger" aria-label="Otevřít menu">☰</button>
+                <h1>Moje záložky</h1>
+            </div>
+        </div>
+    </header>
+
+    <div id="side-menu-root"></div>
+
+    <main class="container">
+        <section class="bookmarks-intro">
+            <p>Vlož URL a vytvoří se dlaždice s náhledem stránky.</p>
+        </section>
+
+        <form id="bookmark-form" class="bookmark-form">
+            <input
+                type="url"
+                id="bookmark-url"
+                placeholder="https://example.com"
+                required
+                autocomplete="off"
+            >
+            <button type="submit" class="btn btn-primary" id="bookmark-submit">Přidat</button>
+        </form>
+
+        <p id="bookmark-status" class="bookmark-status hidden"></p>
+
+        <div id="bookmarks-grid" class="bookmarks-grid"></div>
+
+        <p id="bookmarks-empty" class="empty-state hidden">
+            Zatím tu nejsou žádné záložky. Vlož nahoře první URL!
+        </p>
+
+        <div id="scroll-sentinel" class="scroll-sentinel"></div>
+
+        <p id="bookmarks-end" class="bookmarks-end hidden">Už není co načíst.</p>
+    </main>
+
+    <script type="module" src="zalozky.js"></script>
+</body>
+</html>
