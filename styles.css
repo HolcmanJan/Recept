@@ -40,6 +40,58 @@ header {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.auth-area {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.auth-user {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.auth-loading {
+    color: var(--muted);
+}
+
+.btn-sm {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.85rem;
+}
+
+.sync-banner {
+    padding: 0.65rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+}
+
+.sync-banner-ok {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+.sync-banner-warn {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
 }
 
 h1 {

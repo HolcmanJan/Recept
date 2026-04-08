@@ -8,7 +8,8 @@ Jednoduchá webová aplikace pro zaznamenávání receptů na vaření. Žádný
 - U každého receptu: název, kategorie, počet porcí, doba přípravy, suroviny, postup, poznámky
 - Vyhledávání podle textu (název, suroviny, postup, poznámky)
 - Filtrování podle kategorie
-- Data se ukládají lokálně v prohlížeči (`localStorage`) – zůstávají i po zavření okna
+- **Přihlášení přes Google** – recepty se synchronizují mezi všemi zařízeními přes Firebase Firestore
+- Bez přihlášení funguje offline s ukládáním do `localStorage`
 - Responzivní design pro mobil i desktop
 
 ## Spuštění
