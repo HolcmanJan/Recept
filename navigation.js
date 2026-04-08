@@ -1,5 +1,10 @@
-// Sdílená logika pro hamburger menu (používá ji každá stránka aplikace).
-import { signInWithGoogle, signOutUser } from "./firebase-init.js";
+// Sdílená logika pro hamburger menu a auth UI (používá ji každá stránka aplikace).
+import {
+    auth,
+    onAuthStateChanged,
+    signInWithGoogle,
+    signOutUser,
+} from "./firebase-init.js";
 
 export function initHamburger() {
     const btn = document.getElementById("hamburger-btn");
@@ -27,7 +32,19 @@ export function initHamburger() {
     });
 }
 
-export function renderMenuAuth(user, authReady) {
+// Inicializuje auth UI v postranním menu a volitelně volá callback při každé změně
+// stavu uživatele (pro stránky, které na tom staví svou další logiku).
+export function initMenuAuth(onUserChange) {
+    renderMenuAuth(null, false);
+    onAuthStateChanged(auth, (user) => {
+        renderMenuAuth(user, true);
+        if (typeof onUserChange === "function") {
+            onUserChange(user);
+        }
+    });
+}
+
+function renderMenuAuth(user, authReady) {
     const container = document.getElementById("menu-auth-area");
     if (!container) return;
     container.innerHTML = "";
@@ -71,7 +88,7 @@ export function renderMenuAuth(user, authReady) {
     } else {
         const p = document.createElement("p");
         p.className = "menu-hint";
-        p.textContent = "Přihlaš se, aby se recepty synchronizovaly mezi všemi tvými zařízeními.";
+        p.textContent = "Přihlaš se, aby se data synchronizovala mezi všemi tvými zařízeními.";
         container.appendChild(p);
 
         const btn = document.createElement("button");

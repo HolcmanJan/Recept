@@ -1,8 +1,4 @@
-import {
-    auth,
-    db,
-    onAuthStateChanged,
-} from "./firebase-init.js";
+import { db } from "./firebase-init.js";
 import {
     collection,
     doc,
@@ -10,7 +6,7 @@ import {
     deleteDoc,
     onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { initHamburger, renderMenuAuth } from "./navigation.js";
+import { initHamburger, initMenuAuth } from "./navigation.js";
 
 // ----- Stav aplikace -----
 const STORAGE_KEY = "recept.recipes.v1";
@@ -45,12 +41,11 @@ filterEl.addEventListener("change", renderList);
 formEl.addEventListener("submit", handleFormSubmit);
 
 initHamburger();
-renderMenuAuth(currentUser, authReady);
 renderSyncBanner();
 showList();
 
-// ----- Auth -----
-onAuthStateChanged(auth, (user) => {
+// Inicializuj auth UI (včetně hamburger menu) a reaguj na změny.
+initMenuAuth((user) => {
     authReady = true;
     currentUser = user;
 
@@ -82,7 +77,6 @@ onAuthStateChanged(auth, (user) => {
         refreshDetailIfOpen();
     }
 
-    renderMenuAuth(currentUser, authReady);
     renderSyncBanner();
 });
 
