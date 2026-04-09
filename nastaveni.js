@@ -25,6 +25,29 @@ toggleConfirmDelete.addEventListener("change", () => {
     );
 });
 
+// ----- Brána k záložkám (2 checkboxy) -----
+const gateCheck1 = document.getElementById("gate-check-1");
+const gateCheck2 = document.getElementById("gate-check-2");
+const linkZalozky = document.getElementById("link-zalozky");
+
+function updateGate() {
+    const unlocked = gateCheck1.checked && gateCheck2.checked;
+    if (unlocked) {
+        linkZalozky.classList.remove("settings-item-locked");
+    } else {
+        linkZalozky.classList.add("settings-item-locked");
+    }
+}
+
+linkZalozky.addEventListener("click", (e) => {
+    if (linkZalozky.classList.contains("settings-item-locked")) {
+        e.preventDefault();
+    }
+});
+
+gateCheck1.addEventListener("change", updateGate);
+gateCheck2.addEventListener("change", updateGate);
+
 // ----- Smazání lokálních dat -----
 const clearBtn = document.getElementById("btn-clear-local");
 clearBtn.addEventListener("click", () => {

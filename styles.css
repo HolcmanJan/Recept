@@ -749,6 +749,34 @@ body.menu-open {
     background: #fef2f2;
 }
 
+.settings-item-locked {
+    opacity: 0.4;
+    pointer-events: auto;
+    cursor: not-allowed;
+    justify-content: center;
+}
+
+.settings-item-locked .settings-item-icon {
+    font-size: 1.5rem;
+}
+
+.settings-gate {
+    text-align: center;
+}
+
+.settings-gate-checks {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.settings-gate-checks input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
 .settings-version {
     text-align: center;
     color: var(--muted);
