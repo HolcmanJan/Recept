@@ -1192,141 +1192,71 @@ body.menu-open {
     box-shadow: 0 0 0 2px var(--primary);
 }
 
-/* Modal pro útraty */
-.expense-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
+/* Inline bublina +/- na buňce kalendáře */
+.budget-cell-open {
+    z-index: 10;
 }
 
-.expense-modal.hidden {
-    display: none;
-}
-
-.expense-modal-backdrop {
+.budget-bubble {
     position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-}
-
-.expense-modal-content {
-    position: relative;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
     background: var(--surface);
-    border-radius: 14px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-    padding: 1.25rem;
-    width: 100%;
-    max-width: 400px;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-.expense-modal-content h3 {
-    margin: 0 0 1rem;
-    font-size: 1.15rem;
-    color: var(--text);
-}
-
-.expense-list {
-    margin-bottom: 0.75rem;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.expense-empty {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin: 0;
-    padding: 0.5rem 0;
-}
-
-.expense-row {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.expense-row-desc {
-    flex: 1;
-    font-size: 0.9rem;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
+    gap: 0;
     white-space: nowrap;
+    padding: 0.15rem;
+    z-index: 20;
 }
 
-.expense-row-amount {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
+.budget-bubble::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--border);
 }
 
-.expense-row-delete {
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 50%;
+.budget-bubble-btn {
+    width: 2rem;
+    height: 2rem;
     border: none;
-    background: #fee2e2;
-    color: #dc2626;
-    font-size: 1rem;
-    line-height: 1;
+    border-radius: 8px;
+    background: #f3f4f6;
+    color: var(--text);
+    font-size: 1.15rem;
+    font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    transition: background 0.1s;
+    line-height: 1;
 }
 
-.expense-row-delete:hover {
-    background: #fca5a5;
+.budget-bubble-btn:hover {
+    background: #e5e7eb;
 }
 
-.expense-add-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
+.budget-bubble-btn:active {
+    background: #d1d5db;
 }
 
-.expense-add-row input {
-    flex: 1;
-    padding: 0.45rem 0.65rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+.budget-bubble-value {
+    min-width: 2.5rem;
+    text-align: center;
     font-size: 0.9rem;
-    background: var(--surface);
+    font-weight: 700;
     color: var(--text);
-}
-
-.expense-add-row input:focus {
-    outline: none;
-    border-color: var(--primary);
-}
-
-.expense-add-row input[type="number"] {
-    flex: 0 0 90px;
-    text-align: right;
-}
-
-.expense-modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border);
-}
-
-#expense-day-total {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text);
+    padding: 0 0.25rem;
+    user-select: none;
 }
 
 /* Responzivita kalendáře */
