@@ -23,13 +23,8 @@
             <h2>Aplikace</h2>
             <p class="settings-desc">Další funkce a nástroje v aplikaci.</p>
             <div class="settings-list">
-                <a href="zalozky.html" class="settings-item">
-                    <span class="settings-item-icon">📑</span>
-                    <span class="settings-item-body">
-                        <strong>Moje záložky</strong>
-                        <span>Seznam uložených odkazů s náhledem.</span>
-                    </span>
-                    <span class="settings-item-arrow">›</span>
+                <a href="zalozky.html" class="settings-item settings-item-locked" id="link-zalozky">
+                    <span class="settings-item-icon">❓</span>
                 </a>
             </div>
         </section>
@@ -64,6 +59,13 @@
                         <span>Vymaže recepty a záložky uložené v tomto prohlížeči (netýká se dat v cloudu).</span>
                     </span>
                 </button>
+            </div>
+        </section>
+
+        <section class="settings-section settings-gate">
+            <div class="settings-gate-checks">
+                <input type="checkbox" id="gate-check-1">
+                <input type="checkbox" id="gate-check-2">
             </div>
         </section>
 

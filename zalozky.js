@@ -62,6 +62,19 @@ initNavigation("zalozky", (user) => {
 
 formEl.addEventListener("submit", handleSubmit);
 
+// Tlačítko "Vložit ze schránky" – vloží URL a rovnou odešle
+document.getElementById("bookmark-paste").addEventListener("click", async () => {
+    try {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+            urlEl.value = text.trim();
+            formEl.requestSubmit();
+        }
+    } catch (err) {
+        showStatus("Nelze přečíst schránku. Povol přístup v prohlížeči.", "error");
+    }
+});
+
 // ----- Ukládání -----
 function loadLocal() {
     try {
