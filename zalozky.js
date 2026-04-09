@@ -1,5 +1,5 @@
 // Stránka s uživatelskými záložkami (URL → dlaždice s náhledem).
-// Metadata stránek se získávají přes volně dostupné API microlink.io.
+// Metadata stránek se získávají přes microlink.io, screenshot fallback přes thum.io.
 import { db } from "./firebase-init.js";
 import {
     collection,
@@ -45,9 +45,8 @@ initNavigation("zalozky", (user) => {
         unsubscribeBookmarks = onSnapshot(
             ref,
             (snapshot) => {
-                bookmarks = snapshot.docs
-                    .map((d) => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                bookmarks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+                sortBookmarks(bookmarks);
                 resetRender();
             },
             (err) => {
@@ -70,7 +69,8 @@ function loadLocal() {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
-        return parsed.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        sortBookmarks(parsed);
+        return parsed;
     } catch (e) {
         console.error("Chyba načítání záložek:", e);
         return [];
@@ -85,6 +85,16 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+function sortBookmarks(arr) {
+    arr.sort((a, b) => {
+        const af = a.favorite ? 1 : 0;
+        const bf = b.favorite ? 1 : 0;
+        if (af !== bf) return bf - af;
+        return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+    return arr;
+}
+
 async function persistBookmark(bookmark) {
     if (currentUser) {
         const ref = doc(db, "users", currentUser.uid, "bookmarks", bookmark.id);
@@ -92,6 +102,21 @@ async function persistBookmark(bookmark) {
         await setDoc(ref, data);
     } else {
         bookmarks.unshift(bookmark);
+        sortBookmarks(bookmarks);
+        saveLocal();
+        resetRender();
+    }
+}
+
+async function updateBookmark(bookmark) {
+    if (currentUser) {
+        const ref = doc(db, "users", currentUser.uid, "bookmarks", bookmark.id);
+        const { id, ...data } = bookmark;
+        await setDoc(ref, data);
+    } else {
+        const idx = bookmarks.findIndex((b) => b.id === bookmark.id);
+        if (idx !== -1) bookmarks[idx] = bookmark;
+        sortBookmarks(bookmarks);
         saveLocal();
         resetRender();
     }
@@ -107,8 +132,16 @@ async function removeBookmark(id) {
     }
 }
 
-// ----- Načtení náhledu z URL -----
+// ----- Náhled / obrázek -----
+function screenshotUrl(url) {
+    // thum.io poskytuje screenshot webu jako obrázek, bez API klíče.
+    return "https://image.thum.io/get/width/400/crop/280/" + url;
+}
+
 async function fetchPreview(url) {
+    const parsed = safeParseUrl(url);
+    const hostname = parsed ? parsed.hostname : url;
+
     try {
         const res = await fetch(PREVIEW_API + encodeURIComponent(url));
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -117,21 +150,19 @@ async function fetchPreview(url) {
             throw new Error("API odpověď neúspěšná");
         }
         const d = json.data;
-        const parsed = safeParseUrl(url);
         return {
-            title: d.title || (parsed ? parsed.hostname : url),
+            title: d.title || hostname,
             description: d.description || "",
-            image: d.image && d.image.url ? d.image.url : "",
-            domain: d.publisher || (parsed ? parsed.hostname : ""),
+            image: (d.image && d.image.url) || screenshotUrl(url),
+            domain: d.publisher || hostname,
         };
     } catch (err) {
-        console.warn("Náhled se nepodařilo načíst, použije se fallback:", err);
-        const parsed = safeParseUrl(url);
+        console.warn("Náhled se nepodařilo načíst, použije se screenshot:", err);
         return {
-            title: parsed ? parsed.hostname : url,
+            title: hostname,
             description: "",
-            image: "",
-            domain: parsed ? parsed.hostname : "",
+            image: screenshotUrl(url),
+            domain: hostname,
         };
     }
 }
@@ -170,6 +201,7 @@ async function handleSubmit(event) {
             description: preview.description,
             image: preview.image,
             domain: preview.domain,
+            favorite: false,
             createdAt: Date.now(),
         };
         await persistBookmark(bookmark);
@@ -190,6 +222,17 @@ function showStatus(text, type) {
     statusEl.classList.remove("hidden");
     if (type === "ok") {
         setTimeout(() => statusEl.classList.add("hidden"), 2500);
+    }
+}
+
+// ----- Oblíbené -----
+async function toggleFavorite(bookmark) {
+    const updated = { ...bookmark, favorite: !bookmark.favorite };
+    try {
+        await updateBookmark(updated);
+    } catch (err) {
+        console.error(err);
+        alert("Chyba: " + err.message);
     }
 }
 
@@ -250,31 +293,53 @@ function disconnectObserver() {
 function createTile(bookmark) {
     const tile = document.createElement("article");
     tile.className = "bookmark-tile";
+    if (bookmark.favorite) tile.classList.add("is-favorite");
 
+    // Pozadí pro swipe (ikony smazání vlevo i vpravo)
+    const swipeBg = document.createElement("div");
+    swipeBg.className = "bookmark-swipe-bg";
+    swipeBg.innerHTML =
+        '<span class="bookmark-swipe-icon">🗑</span>' +
+        '<span class="bookmark-swipe-icon">🗑</span>';
+    tile.appendChild(swipeBg);
+
+    // Posuvná část (obsahuje všechno viditelné)
+    const content = document.createElement("div");
+    content.className = "bookmark-swipe-content";
+    tile.appendChild(content);
+
+    // Klikatelný odkaz
     const link = document.createElement("a");
     link.href = bookmark.url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     link.className = "bookmark-link";
+    link.draggable = false;
+    content.appendChild(link);
 
+    // Obrázek
     const imgWrap = document.createElement("div");
     imgWrap.className = "bookmark-image";
-    if (bookmark.image) {
-        const img = document.createElement("img");
-        img.src = bookmark.image;
-        img.alt = "";
-        img.loading = "lazy";
-        img.addEventListener("error", () => {
+    const img = document.createElement("img");
+    img.src = bookmark.image || screenshotUrl(bookmark.url);
+    img.loading = "lazy";
+    img.alt = "";
+    img.draggable = false;
+    let triedScreenshot = img.src.startsWith("https://image.thum.io/");
+    img.addEventListener("error", () => {
+        if (!triedScreenshot) {
+            triedScreenshot = true;
+            img.src = screenshotUrl(bookmark.url);
+        } else {
+            imgWrap.innerHTML = "";
             imgWrap.classList.add("bookmark-image-fallback");
             imgWrap.textContent = "🔗";
-        });
-        imgWrap.appendChild(img);
-    } else {
-        imgWrap.classList.add("bookmark-image-fallback");
-        imgWrap.textContent = "🔗";
-    }
+        }
+    });
+    imgWrap.appendChild(img);
     link.appendChild(imgWrap);
 
+    // Tělo
     const body = document.createElement("div");
     body.className = "bookmark-body";
 
@@ -295,25 +360,135 @@ function createTile(bookmark) {
     body.appendChild(domain);
 
     link.appendChild(body);
-    tile.appendChild(link);
 
-    const delBtn = document.createElement("button");
-    delBtn.className = "bookmark-delete";
-    delBtn.setAttribute("aria-label", "Smazat záložku");
-    delBtn.textContent = "×";
-    delBtn.addEventListener("click", async (e) => {
+    // Hvězdička (oblíbené)
+    const starBtn = document.createElement("button");
+    starBtn.type = "button";
+    starBtn.className = "bookmark-favorite";
+    starBtn.setAttribute(
+        "aria-label",
+        bookmark.favorite ? "Odebrat z oblíbených" : "Přidat do oblíbených"
+    );
+    starBtn.textContent = bookmark.favorite ? "★" : "☆";
+    starBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const ok = window.confirm("Smazat tuto záložku?");
-        if (!ok) return;
+        toggleFavorite(bookmark);
+    });
+    // Zastav bublání pointerdown, aby hvězda nespustila swipe
+    starBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    content.appendChild(starBtn);
+
+    // Swipe na smazání
+    attachSwipe(tile, content, async () => {
         try {
             await removeBookmark(bookmark.id);
         } catch (err) {
             console.error(err);
             alert("Chyba při mazání: " + err.message);
+            // Vrať dlaždici zpět
+            tile.style.maxHeight = "";
+            tile.style.opacity = "";
+            content.style.transform = "translateX(0)";
         }
     });
-    tile.appendChild(delBtn);
 
     return tile;
+}
+
+// ----- Swipe gesture -----
+function attachSwipe(tileEl, contentEl, onDelete) {
+    let startX = 0;
+    let currentDx = 0;
+    let pressed = false;
+    let swiping = false;
+    let justSwiped = false;
+
+    contentEl.style.touchAction = "pan-y";
+
+    function onDown(e) {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        pressed = true;
+        swiping = false;
+        startX = e.clientX;
+        currentDx = 0;
+        contentEl.style.transition = "none";
+        try {
+            contentEl.setPointerCapture(e.pointerId);
+        } catch {}
+    }
+
+    function onMove(e) {
+        if (!pressed) return;
+        const dx = e.clientX - startX;
+        if (!swiping && Math.abs(dx) > 10) {
+            swiping = true;
+            tileEl.classList.add("swiping");
+        }
+        if (swiping) {
+            currentDx = dx;
+            contentEl.style.transform = "translateX(" + dx + "px)";
+            e.preventDefault();
+        }
+    }
+
+    function onUp() {
+        if (!pressed) return;
+        pressed = false;
+        contentEl.style.transition = "transform 0.22s ease";
+
+        const threshold = Math.max(80, tileEl.offsetWidth * 0.35);
+        if (swiping && Math.abs(currentDx) > threshold) {
+            // Dokonči swipe – animuj ven a odstraň
+            const dir = currentDx > 0 ? 1 : -1;
+            contentEl.style.transform =
+                "translateX(" + dir * tileEl.offsetWidth * 1.1 + "px)";
+            const h = tileEl.offsetHeight;
+            tileEl.style.maxHeight = h + "px";
+            // Vynucení reflow, aby přechod výšky startoval z aktuální hodnoty
+            void tileEl.offsetHeight;
+            tileEl.style.transition =
+                "max-height 0.22s ease, opacity 0.22s ease, margin 0.22s ease, padding 0.22s ease";
+            requestAnimationFrame(() => {
+                tileEl.style.maxHeight = "0px";
+                tileEl.style.opacity = "0";
+                tileEl.style.marginTop = "0px";
+                tileEl.style.marginBottom = "0px";
+                tileEl.style.paddingTop = "0px";
+                tileEl.style.paddingBottom = "0px";
+            });
+            justSwiped = true;
+            setTimeout(() => {
+                onDelete();
+                tileEl.classList.remove("swiping");
+            }, 240);
+        } else {
+            contentEl.style.transform = "translateX(0)";
+            if (swiping) justSwiped = true;
+            setTimeout(() => {
+                tileEl.classList.remove("swiping");
+            }, 220);
+        }
+        swiping = false;
+        setTimeout(() => {
+            justSwiped = false;
+        }, 50);
+    }
+
+    // Zabraň kliknutí, když došlo ke swipe gestu
+    contentEl.addEventListener(
+        "click",
+        (e) => {
+            if (justSwiped || Math.abs(currentDx) > 10) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        },
+        true
+    );
+
+    contentEl.addEventListener("pointerdown", onDown);
+    contentEl.addEventListener("pointermove", onMove);
+    contentEl.addEventListener("pointerup", onUp);
+    contentEl.addEventListener("pointercancel", onUp);
 }
