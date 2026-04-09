@@ -9,6 +9,7 @@ import {
 const NAV_ITEMS = [
     { key: "home", label: "🏠 Domů", href: "index.html" },
     { key: "recepty", label: "🍳 Recepty", href: "recepty.html" },
+    { key: "rozpocet", label: "💰 Rozpočet", href: "rozpocet.html" },
     { key: "cviceni", label: "💪 Cvičení", note: "připravujeme" },
     { key: "hry", label: "🎮 Hry", note: "připravujeme" },
 ];

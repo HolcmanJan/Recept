@@ -977,3 +977,379 @@ body.menu-open {
     font-size: 0.85rem;
     margin: 1rem 0 2rem;
 }
+
+/* ===== Rozpočet (Budget) ===== */
+
+.tile-budget {
+    border-left: 4px solid #10b981;
+}
+
+.budget-header {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.budget-period {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+}
+
+.budget-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.budget-input-row label {
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.budget-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.budget-input-wrap input {
+    width: 140px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1.05rem;
+    text-align: right;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.budget-input-wrap input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.budget-currency {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+/* Souhrn */
+.budget-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.budget-stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    text-align: center;
+}
+
+.budget-stat-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.3rem;
+}
+
+.budget-stat-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.budget-arrow {
+    font-size: 0.9rem;
+    font-weight: 900;
+}
+
+.arrow-up {
+    color: #16a34a;
+}
+
+.arrow-down {
+    color: #dc2626;
+}
+
+/* Kalendář */
+.budget-calendar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 2rem;
+}
+
+.budget-cal-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.budget-cal-dayname {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 0.3rem 0;
+    text-transform: uppercase;
+}
+
+.budget-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.budget-cal-cell {
+    aspect-ratio: 1;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background: #f9fafb;
+    transition: transform 0.1s, box-shadow 0.1s;
+    position: relative;
+    min-height: 48px;
+}
+
+.budget-cal-cell:hover {
+    transform: scale(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.budget-cal-empty {
+    cursor: default;
+    background: transparent;
+}
+
+.budget-cal-empty:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.budget-cal-num {
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.budget-cal-spent {
+    font-size: 0.6rem;
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+/* Barvy dnů */
+.budget-day-neutral {
+    background: #f3f4f6;
+    color: var(--text);
+}
+
+.budget-day-ok {
+    background: #dcfce7;
+    color: #166534;
+    border-color: #86efac;
+}
+
+.budget-day-warn {
+    background: #fef9c3;
+    color: #92400e;
+    border-color: #fde047;
+}
+
+.budget-day-over {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.budget-day-today {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* Modal pro útraty */
+.expense-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.expense-modal.hidden {
+    display: none;
+}
+
+.expense-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.expense-modal-content {
+    position: relative;
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    padding: 1.25rem;
+    width: 100%;
+    max-width: 400px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.expense-modal-content h3 {
+    margin: 0 0 1rem;
+    font-size: 1.15rem;
+    color: var(--text);
+}
+
+.expense-list {
+    margin-bottom: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.expense-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0;
+    padding: 0.5rem 0;
+}
+
+.expense-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.expense-row-desc {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.expense-row-amount {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.expense-row-delete {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: none;
+    background: #fee2e2;
+    color: #dc2626;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.expense-row-delete:hover {
+    background: #fca5a5;
+}
+
+.expense-add-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.expense-add-row input {
+    flex: 1;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.expense-add-row input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.expense-add-row input[type="number"] {
+    flex: 0 0 90px;
+    text-align: right;
+}
+
+.expense-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+#expense-day-total {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+/* Responzivita kalendáře */
+@media (max-width: 480px) {
+    .budget-cal-cell {
+        min-height: 40px;
+        border-radius: 8px;
+    }
+
+    .budget-cal-num {
+        font-size: 0.75rem;
+    }
+
+    .budget-cal-spent {
+        font-size: 0.5rem;
+    }
+
+    .budget-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .budget-input-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
