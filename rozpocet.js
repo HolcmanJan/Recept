@@ -420,7 +420,14 @@ initNavigation("rozpocet", (user) => {
             },
             (err) => {
                 console.error("Firestore chyba:", err);
-                alert("Chyba při načítání rozpočtu: " + err.message);
+                // Fallback – zobraz kalendář i při chybě oprávnění
+                budgetData = defaultBudget();
+                amountEl.value = "";
+                render();
+                alert(
+                    "Nepodařilo se načíst rozpočet z cloudu. Zkontroluj Firestore pravidla.\n\n" +
+                    err.message
+                );
             }
         );
     } else {
