@@ -1,24 +1,23 @@
 // Rozpočet – sledování měsíčního rozpočtu (období 14. – 14.)
 import { db } from "./firebase-init.js";
 import {
-    collection,
     doc,
     setDoc,
-    deleteDoc,
     onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.budget.v1";
+const STEP = 10;
 
 // ----- Stav -----
 let currentUser = null;
 let unsubscribeBudget = null;
-let budgetData = null; // { amount, expenses: { "YYYY-MM-DD": [{desc, amount}] } }
-let periodStart = null; // Date
-let periodEnd = null; // Date
-let periodDays = []; // ["YYYY-MM-DD", ...]
-let selectedDate = null; // "YYYY-MM-DD" pro modal
+let budgetData = null; // { amount, expenses: { "YYYY-MM-DD": number } }
+let periodStart = null;
+let periodEnd = null;
+let periodDays = [];
+let openDay = null; // "YYYY-MM-DD" právě otevřená bublina
 
 // ----- DOM -----
 const periodEl = document.getElementById("budget-period");
@@ -30,21 +29,11 @@ const statRemainingValueEl = document.getElementById("stat-remaining-value");
 const statRemainingArrowEl = document.getElementById("stat-remaining-arrow");
 const statDailyEl = document.getElementById("stat-daily");
 
-const modalEl = document.getElementById("expense-modal");
-const modalTitleEl = document.getElementById("expense-modal-title");
-const expenseListEl = document.getElementById("expense-list");
-const expenseDescEl = document.getElementById("expense-desc");
-const expenseAmountEl = document.getElementById("expense-amount");
-const expenseAddBtn = document.getElementById("expense-add-btn");
-const expenseCloseBtn = document.getElementById("expense-close-btn");
-const expenseDayTotalEl = document.getElementById("expense-day-total");
-const modalBackdrop = document.querySelector(".expense-modal-backdrop");
-
 // ----- Období -----
 function computePeriod() {
     const now = new Date();
     const y = now.getFullYear();
-    const m = now.getMonth(); // 0-indexed
+    const m = now.getMonth();
 
     if (now.getDate() >= 14) {
         periodStart = new Date(y, m, 14);
@@ -57,25 +46,25 @@ function computePeriod() {
     periodDays = [];
     const d = new Date(periodStart);
     while (d <= periodEnd) {
-        periodDays.push(formatDate(d));
+        periodDays.push(fmtDate(d));
         d.setDate(d.getDate() + 1);
     }
 }
 
-function formatDate(d) {
+function fmtDate(d) {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     return yyyy + "-" + mm + "-" + dd;
 }
 
-function formatDateCZ(dateStr) {
+function fmtDateCZ(dateStr) {
     const [y, m, d] = dateStr.split("-");
     return parseInt(d) + ". " + parseInt(m) + ". " + y;
 }
 
 function periodKey() {
-    return formatDate(periodStart);
+    return fmtDate(periodStart);
 }
 
 // ----- Data -----
@@ -102,6 +91,20 @@ function getBudgetForPeriod(allData) {
     return allData[key] ? { ...defaultBudget(), ...allData[key] } : defaultBudget();
 }
 
+// Migrace starého formátu (pole objektů → číslo)
+function migrateExpenses(expenses) {
+    if (!expenses) return {};
+    const out = {};
+    for (const [key, val] of Object.entries(expenses)) {
+        if (Array.isArray(val)) {
+            out[key] = val.reduce((s, e) => s + (e.amount || 0), 0);
+        } else {
+            out[key] = typeof val === "number" ? val : 0;
+        }
+    }
+    return out;
+}
+
 async function persistBudgetData() {
     if (currentUser) {
         const ref = doc(db, "users", currentUser.uid, "budget", periodKey());
@@ -113,17 +116,26 @@ async function persistBudgetData() {
     }
 }
 
+let saveTimeout = null;
+function debouncedSave() {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+        try {
+            await persistBudgetData();
+        } catch (err) {
+            console.error(err);
+        }
+    }, 400);
+}
+
 // ----- Výpočty -----
-function dayExpenseTotal(dateStr) {
-    const items = (budgetData.expenses && budgetData.expenses[dateStr]) || [];
-    return items.reduce((sum, e) => sum + (e.amount || 0), 0);
+function daySpent(dateStr) {
+    return (budgetData.expenses && budgetData.expenses[dateStr]) || 0;
 }
 
 function totalSpent() {
     let sum = 0;
-    for (const day of periodDays) {
-        sum += dayExpenseTotal(day);
-    }
+    for (const day of periodDays) sum += daySpent(day);
     return sum;
 }
 
@@ -133,7 +145,7 @@ function dailyBudget() {
 }
 
 function expectedRemainingToday() {
-    const today = formatDate(new Date());
+    const today = fmtDate(new Date());
     let daysPassed = 0;
     for (const day of periodDays) {
         if (day <= today) daysPassed++;
@@ -150,7 +162,7 @@ function render() {
 
 function renderPeriod() {
     periodEl.textContent =
-        "Období: " + formatDateCZ(formatDate(periodStart)) + " – " + formatDateCZ(formatDate(periodEnd));
+        "Období: " + fmtDateCZ(fmtDate(periodStart)) + " – " + fmtDateCZ(fmtDate(periodEnd));
 }
 
 function renderSummary() {
@@ -159,12 +171,11 @@ function renderSummary() {
     const remaining = total - spent;
     const daily = dailyBudget();
 
-    statTotalEl.textContent = formatMoney(total);
-    statSpentEl.textContent = formatMoney(spent);
-    statRemainingValueEl.textContent = formatMoney(remaining);
-    statDailyEl.textContent = formatMoney(Math.round(daily));
+    statTotalEl.textContent = fmtMoney(total);
+    statSpentEl.textContent = fmtMoney(spent);
+    statRemainingValueEl.textContent = fmtMoney(remaining);
+    statDailyEl.textContent = fmtMoney(Math.round(daily));
 
-    // Šipka u zůstatku
     const expected = expectedRemainingToday();
     if (total > 0) {
         statRemainingArrowEl.classList.remove("hidden");
@@ -182,10 +193,9 @@ function renderSummary() {
 
 function renderCalendar() {
     calendarEl.innerHTML = "";
-    const today = formatDate(new Date());
+    const today = fmtDate(new Date());
     const daily = dailyBudget();
 
-    // Záhlaví dnů v týdnu
     const dayNames = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
     const headerRow = document.createElement("div");
     headerRow.className = "budget-cal-header";
@@ -197,16 +207,12 @@ function renderCalendar() {
     });
     calendarEl.appendChild(headerRow);
 
-    // Dny v gridu
     const grid = document.createElement("div");
     grid.className = "budget-cal-grid";
 
-    // Najdi den v týdnu prvního dne (0=Ne, 1=Po, ... 6=So)
     const firstDayOfWeek = periodStart.getDay();
-    // Převeď na pondělní start (Po=0, Út=1, ..., Ne=6)
     const offset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
 
-    // Prázdné buňky před prvním dnem
     for (let i = 0; i < offset; i++) {
         const empty = document.createElement("div");
         empty.className = "budget-cal-cell budget-cal-empty";
@@ -217,10 +223,9 @@ function renderCalendar() {
         const cell = document.createElement("div");
         cell.className = "budget-cal-cell";
 
-        const spent = dayExpenseTotal(dateStr);
+        const spent = daySpent(dateStr);
         const dayNum = parseInt(dateStr.split("-")[2]);
 
-        // Barva podle poměru útraty k dennímu budgetu
         if (daily > 0) {
             const ratio = spent / daily;
             if (spent === 0) {
@@ -234,9 +239,7 @@ function renderCalendar() {
             }
         }
 
-        if (dateStr === today) {
-            cell.classList.add("budget-day-today");
-        }
+        if (dateStr === today) cell.classList.add("budget-day-today");
 
         const numEl = document.createElement("span");
         numEl.className = "budget-cal-num";
@@ -246,155 +249,110 @@ function renderCalendar() {
         if (spent > 0) {
             const spentEl = document.createElement("span");
             spentEl.className = "budget-cal-spent";
-            spentEl.textContent = formatMoney(spent);
+            spentEl.textContent = fmtMoney(spent);
             cell.appendChild(spentEl);
         }
 
-        cell.addEventListener("click", () => openExpenseModal(dateStr));
+        // Klik → otevři / zavři bublinu
+        cell.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleBubble(dateStr, cell);
+        });
+
+        // Pokud je den právě otevřený, přidej bublinu
+        if (openDay === dateStr) {
+            cell.classList.add("budget-cell-open");
+            cell.appendChild(createBubble(dateStr));
+        }
+
         grid.appendChild(cell);
     });
 
     calendarEl.appendChild(grid);
 }
 
-function formatMoney(n) {
+// ----- Inline bublina (+/- ovládání) -----
+function toggleBubble(dateStr, cell) {
+    if (openDay === dateStr) {
+        openDay = null;
+    } else {
+        openDay = dateStr;
+    }
+    renderCalendar();
+}
+
+function createBubble(dateStr) {
+    const bubble = document.createElement("div");
+    bubble.className = "budget-bubble";
+
+    const minusBtn = document.createElement("button");
+    minusBtn.type = "button";
+    minusBtn.className = "budget-bubble-btn";
+    minusBtn.textContent = "−";
+    minusBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeExpense(dateStr, -STEP);
+    });
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "budget-bubble-value";
+    valueEl.textContent = daySpent(dateStr);
+
+    const plusBtn = document.createElement("button");
+    plusBtn.type = "button";
+    plusBtn.className = "budget-bubble-btn";
+    plusBtn.textContent = "+";
+    plusBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeExpense(dateStr, STEP);
+    });
+
+    bubble.appendChild(minusBtn);
+    bubble.appendChild(valueEl);
+    bubble.appendChild(plusBtn);
+
+    // Zastav klik, aby se bublina nezavřela klikem na sebe
+    bubble.addEventListener("click", (e) => e.stopPropagation());
+
+    return bubble;
+}
+
+function changeExpense(dateStr, delta) {
+    if (!budgetData.expenses) budgetData.expenses = {};
+    const current = budgetData.expenses[dateStr] || 0;
+    const next = Math.max(0, current + delta);
+    if (next === 0) {
+        delete budgetData.expenses[dateStr];
+    } else {
+        budgetData.expenses[dateStr] = next;
+    }
+    debouncedSave();
+    renderSummary();
+    renderCalendar();
+}
+
+// Zavři bublinu klikem kamkoliv mimo
+document.addEventListener("click", () => {
+    if (openDay !== null) {
+        openDay = null;
+        renderCalendar();
+    }
+});
+
+function fmtMoney(n) {
     return n.toLocaleString("cs-CZ") + " Kč";
 }
 
-// ----- Modal pro zadání útraty -----
-function openExpenseModal(dateStr) {
-    selectedDate = dateStr;
-    modalTitleEl.textContent = formatDateCZ(dateStr);
-    renderExpenseList();
-    modalEl.classList.remove("hidden");
-    expenseAmountEl.focus();
-}
-
-function closeExpenseModal() {
-    modalEl.classList.add("hidden");
-    selectedDate = null;
-    expenseDescEl.value = "";
-    expenseAmountEl.value = "";
-}
-
-function renderExpenseList() {
-    expenseListEl.innerHTML = "";
-    const items = (budgetData.expenses && budgetData.expenses[selectedDate]) || [];
-
-    if (items.length === 0) {
-        const empty = document.createElement("p");
-        empty.className = "expense-empty";
-        empty.textContent = "Žádné útraty.";
-        expenseListEl.appendChild(empty);
-    } else {
-        items.forEach((item, idx) => {
-            const row = document.createElement("div");
-            row.className = "expense-row";
-
-            const desc = document.createElement("span");
-            desc.className = "expense-row-desc";
-            desc.textContent = item.desc || "Útrata";
-            row.appendChild(desc);
-
-            const amt = document.createElement("span");
-            amt.className = "expense-row-amount";
-            amt.textContent = formatMoney(item.amount);
-            row.appendChild(amt);
-
-            const delBtn = document.createElement("button");
-            delBtn.className = "expense-row-delete";
-            delBtn.textContent = "×";
-            delBtn.title = "Smazat";
-            delBtn.addEventListener("click", () => removeExpense(idx));
-            row.appendChild(delBtn);
-
-            expenseListEl.appendChild(row);
-        });
-    }
-
-    const total = dayExpenseTotal(selectedDate);
-    expenseDayTotalEl.textContent = "Celkem: " + formatMoney(total);
-}
-
-async function addExpense() {
-    const amount = parseFloat(expenseAmountEl.value);
-    if (!amount || amount <= 0) return;
-
-    const desc = expenseDescEl.value.trim();
-    if (!budgetData.expenses) budgetData.expenses = {};
-    if (!budgetData.expenses[selectedDate]) budgetData.expenses[selectedDate] = [];
-
-    budgetData.expenses[selectedDate].push({ desc, amount });
-
-    try {
-        await persistBudgetData();
-    } catch (err) {
-        console.error(err);
-        alert("Chyba při ukládání: " + err.message);
-    }
-
-    expenseDescEl.value = "";
-    expenseAmountEl.value = "";
-    expenseAmountEl.focus();
-
-    renderExpenseList();
-    renderSummary();
-    renderCalendar();
-}
-
-async function removeExpense(idx) {
-    const items = budgetData.expenses[selectedDate];
-    if (!items) return;
-    items.splice(idx, 1);
-    if (items.length === 0) delete budgetData.expenses[selectedDate];
-
-    try {
-        await persistBudgetData();
-    } catch (err) {
-        console.error(err);
-        alert("Chyba při mazání: " + err.message);
-    }
-
-    renderExpenseList();
-    renderSummary();
-    renderCalendar();
-}
-
 // ----- Změna rozpočtu -----
-let saveTimeout = null;
-async function onBudgetAmountChange() {
+function onBudgetAmountChange() {
     budgetData.amount = parseFloat(amountEl.value) || 0;
     renderSummary();
     renderCalendar();
-
-    // Debounce uložení
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
-        try {
-            await persistBudgetData();
-        } catch (err) {
-            console.error(err);
-        }
-    }, 500);
+    debouncedSave();
 }
 
 // ----- Event listeners -----
 amountEl.addEventListener("input", onBudgetAmountChange);
-expenseAddBtn.addEventListener("click", addExpense);
-expenseCloseBtn.addEventListener("click", closeExpenseModal);
-modalBackdrop.addEventListener("click", closeExpenseModal);
-document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !modalEl.classList.contains("hidden")) {
-        closeExpenseModal();
-    }
-});
-// Enter v částce přidá útratu
-expenseAmountEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        e.preventDefault();
-        addExpense();
-    }
-});
 
 // ----- Inicializace -----
 computePeriod();
@@ -412,20 +370,30 @@ initNavigation("rozpocet", (user) => {
         unsubscribeBudget = onSnapshot(
             ref,
             (snapshot) => {
-                budgetData = snapshot.exists()
-                    ? { ...defaultBudget(), ...snapshot.data() }
-                    : defaultBudget();
+                if (snapshot.exists()) {
+                    budgetData = { ...defaultBudget(), ...snapshot.data() };
+                    budgetData.expenses = migrateExpenses(budgetData.expenses);
+                } else {
+                    budgetData = defaultBudget();
+                }
                 amountEl.value = budgetData.amount || "";
                 render();
             },
             (err) => {
                 console.error("Firestore chyba:", err);
-                alert("Chyba při načítání rozpočtu: " + err.message);
+                budgetData = defaultBudget();
+                amountEl.value = "";
+                render();
+                alert(
+                    "Nepodařilo se načíst rozpočet z cloudu. Zkontroluj Firestore pravidla.\n\n" +
+                    err.message
+                );
             }
         );
     } else {
         const allData = loadLocal();
         budgetData = getBudgetForPeriod(allData);
+        budgetData.expenses = migrateExpenses(budgetData.expenses);
         amountEl.value = budgetData.amount || "";
         render();
     }

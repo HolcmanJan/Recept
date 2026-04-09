@@ -56,26 +56,6 @@
 
         <!-- Kalendář -->
         <section class="budget-calendar" id="budget-calendar"></section>
-
-        <!-- Modal pro zadání útraty -->
-        <div id="expense-modal" class="expense-modal hidden">
-            <div class="expense-modal-backdrop"></div>
-            <div class="expense-modal-content">
-                <h3 id="expense-modal-title"></h3>
-                <div class="expense-modal-body">
-                    <div class="expense-list" id="expense-list"></div>
-                    <div class="expense-add-row">
-                        <input type="text" id="expense-desc" placeholder="Popis (volitelné)">
-                        <input type="number" id="expense-amount" min="0" step="1" placeholder="Částka">
-                        <button id="expense-add-btn" class="btn btn-primary btn-sm">Přidat</button>
-                    </div>
-                </div>
-                <div class="expense-modal-footer">
-                    <span id="expense-day-total"></span>
-                    <button id="expense-close-btn" class="btn btn-secondary btn-sm">Zavřít</button>
-                </div>
-            </div>
-        </div>
     </main>
 
     <script type="module" src="rozpocet.js"></script>
