@@ -9,6 +9,7 @@ import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.budget.v1";
 const STEP = 10;
+const STEP_LG = 50;
 
 // ----- Stav -----
 let currentUser = null;
@@ -363,11 +364,15 @@ function createBubble(dateStr) {
     const bubble = document.createElement("div");
     bubble.className = "budget-bubble";
 
-    const minusBtn = document.createElement("button");
-    minusBtn.type = "button";
-    minusBtn.className = "budget-bubble-btn";
-    minusBtn.textContent = "−";
-    minusBtn.addEventListener("click", (e) => {
+    // Řádek ±10
+    const row1 = document.createElement("div");
+    row1.className = "budget-bubble-row";
+
+    const minus10 = document.createElement("button");
+    minus10.type = "button";
+    minus10.className = "budget-bubble-btn";
+    minus10.textContent = "−";
+    minus10.addEventListener("click", (e) => {
         e.stopPropagation();
         changeExpense(dateStr, -STEP);
     });
@@ -376,18 +381,46 @@ function createBubble(dateStr) {
     valueEl.className = "budget-bubble-value";
     valueEl.textContent = daySpent(dateStr);
 
-    const plusBtn = document.createElement("button");
-    plusBtn.type = "button";
-    plusBtn.className = "budget-bubble-btn";
-    plusBtn.textContent = "+";
-    plusBtn.addEventListener("click", (e) => {
+    const plus10 = document.createElement("button");
+    plus10.type = "button";
+    plus10.className = "budget-bubble-btn";
+    plus10.textContent = "+";
+    plus10.addEventListener("click", (e) => {
         e.stopPropagation();
         changeExpense(dateStr, STEP);
     });
 
-    bubble.appendChild(minusBtn);
-    bubble.appendChild(valueEl);
-    bubble.appendChild(plusBtn);
+    row1.appendChild(minus10);
+    row1.appendChild(valueEl);
+    row1.appendChild(plus10);
+
+    // Řádek ±50
+    const row2 = document.createElement("div");
+    row2.className = "budget-bubble-row";
+
+    const minus50 = document.createElement("button");
+    minus50.type = "button";
+    minus50.className = "budget-bubble-btn budget-bubble-btn-lg";
+    minus50.textContent = "−50";
+    minus50.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeExpense(dateStr, -STEP_LG);
+    });
+
+    const plus50 = document.createElement("button");
+    plus50.type = "button";
+    plus50.className = "budget-bubble-btn budget-bubble-btn-lg";
+    plus50.textContent = "+50";
+    plus50.addEventListener("click", (e) => {
+        e.stopPropagation();
+        changeExpense(dateStr, STEP_LG);
+    });
+
+    row2.appendChild(minus50);
+    row2.appendChild(plus50);
+
+    bubble.appendChild(row1);
+    bubble.appendChild(row2);
 
     bubble.addEventListener("click", (e) => e.stopPropagation());
 
