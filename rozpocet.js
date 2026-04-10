@@ -151,18 +151,19 @@ function totalSpent() {
 
 function dailyBudget() {
     const today = fmtDate(new Date());
-    const remaining = budgetData.amount - totalSpent();
 
     if (isCurrentPeriod()) {
-        // Aktuální období: zůstatek / zbývající dny
+        // Zůstatek BEZ dnešní útraty / zbývající dny (včetně dneška)
+        // → dnešní budget se nemění průběhem dne
+        let spentBeforeToday = 0;
         let daysLeft = 0;
         for (const day of periodDays) {
+            if (day < today) spentBeforeToday += daySpent(day);
             if (day >= today) daysLeft++;
         }
         if (daysLeft <= 0) return 0;
-        return remaining / daysLeft;
+        return (budgetData.amount - spentBeforeToday) / daysLeft;
     } else {
-        // Historické/budoucí: rozpočet / celkový počet dnů
         if (periodDays.length === 0) return 0;
         return budgetData.amount / periodDays.length;
     }
