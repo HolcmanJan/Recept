@@ -21,7 +21,12 @@
     <main class="container">
         <!-- Nastavení rozpočtu -->
         <section class="budget-header">
-            <div class="budget-period" id="budget-period"></div>
+            <div class="budget-period-nav">
+                <button type="button" id="period-prev" class="budget-nav-btn" aria-label="Předchozí období">‹</button>
+                <div class="budget-period" id="budget-period"></div>
+                <button type="button" id="period-next" class="budget-nav-btn" aria-label="Následující období">›</button>
+            </div>
+            <button type="button" id="period-today" class="budget-today-btn hidden">Aktuální období</button>
             <div class="budget-input-row">
                 <label for="budget-amount">Rozpočet na období:</label>
                 <div class="budget-input-wrap">
