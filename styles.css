@@ -1008,6 +1008,27 @@ body.menu-open {
     color: #f59e0b;
 }
 
+.bookmark-tab-select {
+    flex: 0 0 2rem;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 2rem;
+    border: none;
+    border-left: 1px solid var(--border);
+    background: #f3f4f6;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s;
+}
+
+.bookmark-tab-select:hover {
+    background: #e5e7eb;
+}
+
 .bookmark-delete {
     flex: 0 0 2.75rem;
     display: flex;
