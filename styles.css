@@ -851,46 +851,20 @@ body.menu-open {
     border-radius: 12px;
     overflow: hidden;
     box-shadow: var(--shadow);
-    background: #ef4444;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: row;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.bookmark-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
 }
 
 .bookmark-tile.is-favorite {
     box-shadow: 0 0 0 2px #f59e0b, var(--shadow);
-}
-
-.bookmark-swipe-bg {
-    position: absolute;
-    inset: 0;
-    background: #ef4444;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 1.25rem;
-    font-size: 1.4rem;
-    pointer-events: none;
-}
-
-.bookmark-swipe-content {
-    position: relative;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transform: translateX(0);
-    touch-action: pan-y;
-    user-select: none;
-    -webkit-user-select: none;
-    will-change: transform;
-}
-
-.bookmark-tile:not(.swiping) .bookmark-swipe-content {
-    transition: transform 0.15s, box-shadow 0.15s;
-}
-
-.bookmark-tile:not(.swiping):hover .bookmark-swipe-content {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
 }
 
 .bookmark-link {
@@ -899,6 +873,8 @@ body.menu-open {
     text-decoration: none;
     color: var(--text);
     min-height: 96px;
+    flex: 1;
+    min-width: 0;
 }
 
 .bookmark-image {
@@ -968,7 +944,7 @@ body.menu-open {
 .bookmark-favorite {
     position: absolute;
     top: 0.35rem;
-    right: 0.35rem;
+    right: 3rem;
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
@@ -993,6 +969,24 @@ body.menu-open {
 
 .bookmark-tile.is-favorite .bookmark-favorite {
     color: #f59e0b;
+}
+
+.bookmark-delete {
+    flex: 0 0 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fee2e2;
+    border: none;
+    border-left: 1px solid #fecaca;
+    color: #dc2626;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.bookmark-delete:hover {
+    background: #fca5a5;
 }
 
 .scroll-sentinel {

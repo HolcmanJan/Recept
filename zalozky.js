@@ -303,19 +303,6 @@ function createTile(bookmark) {
     tile.className = "bookmark-tile";
     if (bookmark.favorite) tile.classList.add("is-favorite");
 
-    // Pozadí pro swipe (ikony smazání vlevo i vpravo)
-    const swipeBg = document.createElement("div");
-    swipeBg.className = "bookmark-swipe-bg";
-    swipeBg.innerHTML =
-        '<span class="bookmark-swipe-icon">🗑</span>' +
-        '<span class="bookmark-swipe-icon">🗑</span>';
-    tile.appendChild(swipeBg);
-
-    // Posuvná část (obsahuje všechno viditelné)
-    const content = document.createElement("div");
-    content.className = "bookmark-swipe-content";
-    tile.appendChild(content);
-
     // Klikatelný odkaz
     const link = document.createElement("a");
     link.href = bookmark.url;
@@ -323,7 +310,7 @@ function createTile(bookmark) {
     link.rel = "noopener noreferrer";
     link.className = "bookmark-link";
     link.draggable = false;
-    content.appendChild(link);
+    tile.appendChild(link);
 
     // Obrázek
     const imgWrap = document.createElement("div");
@@ -382,123 +369,25 @@ function createTile(bookmark) {
         e.stopPropagation();
         toggleFavorite(bookmark);
     });
-    // Zastav bublání pointerdown, aby hvězda nespustila swipe
-    starBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-    content.appendChild(starBtn);
+    tile.appendChild(starBtn);
 
-    // Swipe na smazání
-    attachSwipe(tile, content, async () => {
+    // Tlačítko smazání (pravý pruh přes celou výšku)
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "bookmark-delete";
+    delBtn.setAttribute("aria-label", "Smazat záložku");
+    delBtn.textContent = "🗑";
+    delBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         try {
             await removeBookmark(bookmark.id);
         } catch (err) {
             console.error(err);
             alert("Chyba při mazání: " + err.message);
-            // Vrať dlaždici zpět
-            tile.style.maxHeight = "";
-            tile.style.opacity = "";
-            content.style.transform = "translateX(0)";
         }
     });
+    tile.appendChild(delBtn);
 
     return tile;
-}
-
-// ----- Swipe gesture -----
-function attachSwipe(tileEl, contentEl, onDelete) {
-    let startX = 0;
-    let currentDx = 0;
-    let pressed = false;
-    let swiping = false;
-    let justSwiped = false;
-
-    contentEl.style.touchAction = "pan-y";
-
-    function onDown(e) {
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        pressed = true;
-        swiping = false;
-        startX = e.clientX;
-        currentDx = 0;
-        contentEl.style.transition = "none";
-        // Pointer capture jen pro touch – na myši blokuje klik na <a>
-        if (e.pointerType !== "mouse") {
-            try {
-                contentEl.setPointerCapture(e.pointerId);
-            } catch {}
-        }
-    }
-
-    function onMove(e) {
-        if (!pressed) return;
-        const dx = e.clientX - startX;
-        if (!swiping && Math.abs(dx) > 10) {
-            swiping = true;
-            tileEl.classList.add("swiping");
-        }
-        if (swiping) {
-            currentDx = dx;
-            contentEl.style.transform = "translateX(" + dx + "px)";
-            e.preventDefault();
-        }
-    }
-
-    function onUp() {
-        if (!pressed) return;
-        pressed = false;
-        contentEl.style.transition = "transform 0.22s ease";
-
-        const threshold = Math.max(80, tileEl.offsetWidth * 0.35);
-        if (swiping && Math.abs(currentDx) > threshold) {
-            // Dokonči swipe – animuj ven a odstraň
-            const dir = currentDx > 0 ? 1 : -1;
-            contentEl.style.transform =
-                "translateX(" + dir * tileEl.offsetWidth * 1.1 + "px)";
-            const h = tileEl.offsetHeight;
-            tileEl.style.maxHeight = h + "px";
-            // Vynucení reflow, aby přechod výšky startoval z aktuální hodnoty
-            void tileEl.offsetHeight;
-            tileEl.style.transition =
-                "max-height 0.22s ease, opacity 0.22s ease, margin 0.22s ease, padding 0.22s ease";
-            requestAnimationFrame(() => {
-                tileEl.style.maxHeight = "0px";
-                tileEl.style.opacity = "0";
-                tileEl.style.marginTop = "0px";
-                tileEl.style.marginBottom = "0px";
-                tileEl.style.paddingTop = "0px";
-                tileEl.style.paddingBottom = "0px";
-            });
-            justSwiped = true;
-            setTimeout(() => {
-                onDelete();
-                tileEl.classList.remove("swiping");
-            }, 240);
-        } else {
-            contentEl.style.transform = "translateX(0)";
-            if (swiping) justSwiped = true;
-            setTimeout(() => {
-                tileEl.classList.remove("swiping");
-            }, 220);
-        }
-        swiping = false;
-        setTimeout(() => {
-            justSwiped = false;
-        }, 50);
-    }
-
-    // Zabraň kliknutí, když došlo ke swipe gestu
-    contentEl.addEventListener(
-        "click",
-        (e) => {
-            if (justSwiped || Math.abs(currentDx) > 10) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        },
-        true
-    );
-
-    contentEl.addEventListener("pointerdown", onDown);
-    contentEl.addEventListener("pointermove", onMove);
-    contentEl.addEventListener("pointerup", onUp);
-    contentEl.addEventListener("pointercancel", onUp);
 }
