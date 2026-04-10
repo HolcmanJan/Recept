@@ -1014,11 +1014,58 @@ body.menu-open {
     margin-bottom: 1rem;
 }
 
+.budget-period-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.budget-nav-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 1.25rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+    flex-shrink: 0;
+}
+
+.budget-nav-btn:hover {
+    background: #f3f4f6;
+}
+
 .budget-period {
     font-size: 0.9rem;
     color: var(--muted);
-    margin-bottom: 0.75rem;
     font-weight: 500;
+    text-align: center;
+    flex: 1;
+}
+
+.budget-today-btn {
+    display: block;
+    margin: 0 auto 0.65rem;
+    padding: 0.25rem 0.85rem;
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.budget-today-btn:hover {
+    background: rgba(37, 99, 235, 0.06);
 }
 
 .budget-input-row {

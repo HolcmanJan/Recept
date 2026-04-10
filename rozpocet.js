@@ -17,10 +17,14 @@ let budgetData = null; // { amount, expenses: { "YYYY-MM-DD": number } }
 let periodStart = null;
 let periodEnd = null;
 let periodDays = [];
-let openDay = null; // "YYYY-MM-DD" právě otevřená bublina
+let periodOffset = 0; // 0 = aktuální, -1 = předchozí, …
+let openDay = null;
 
 // ----- DOM -----
 const periodEl = document.getElementById("budget-period");
+const prevBtn = document.getElementById("period-prev");
+const nextBtn = document.getElementById("period-next");
+const todayBtn = document.getElementById("period-today");
 const amountEl = document.getElementById("budget-amount");
 const calendarEl = document.getElementById("budget-calendar");
 const statTotalEl = document.getElementById("stat-total");
@@ -30,18 +34,21 @@ const statRemainingArrowEl = document.getElementById("stat-remaining-arrow");
 const statDailyEl = document.getElementById("stat-daily");
 
 // ----- Období -----
-function computePeriod() {
+function computePeriod(offset) {
     const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
+    let y = now.getFullYear();
+    let m = now.getMonth();
 
-    if (now.getDate() >= 14) {
-        periodStart = new Date(y, m, 14);
-        periodEnd = new Date(y, m + 1, 13);
-    } else {
-        periodStart = new Date(y, m - 1, 14);
-        periodEnd = new Date(y, m, 13);
-    }
+    // Zjisti základní měsíc (aktuální období)
+    if (now.getDate() < 14) m -= 1;
+
+    // Posuň o offset
+    m += offset;
+
+    // Normalizuj rok/měsíc
+    const baseDate = new Date(y, m, 14);
+    periodStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), 14);
+    periodEnd = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 13);
 
     periodDays = [];
     const d = new Date(periodStart);
@@ -65,6 +72,10 @@ function fmtDateCZ(dateStr) {
 
 function periodKey() {
     return fmtDate(periodStart);
+}
+
+function isCurrentPeriod() {
+    return periodOffset === 0;
 }
 
 // ----- Data -----
@@ -91,7 +102,6 @@ function getBudgetForPeriod(allData) {
     return allData[key] ? { ...defaultBudget(), ...allData[key] } : defaultBudget();
 }
 
-// Migrace starého formátu (pole objektů → číslo)
 function migrateExpenses(expenses) {
     if (!expenses) return {};
     const out = {};
@@ -142,21 +152,84 @@ function totalSpent() {
 function dailyBudget() {
     const today = fmtDate(new Date());
     const remaining = budgetData.amount - totalSpent();
-    let daysLeft = 0;
-    for (const day of periodDays) {
-        if (day >= today) daysLeft++;
+
+    if (isCurrentPeriod()) {
+        // Aktuální období: zůstatek / zbývající dny
+        let daysLeft = 0;
+        for (const day of periodDays) {
+            if (day >= today) daysLeft++;
+        }
+        if (daysLeft <= 0) return 0;
+        return remaining / daysLeft;
+    } else {
+        // Historické/budoucí: rozpočet / celkový počet dnů
+        if (periodDays.length === 0) return 0;
+        return budgetData.amount / periodDays.length;
     }
-    if (daysLeft <= 0) return 0;
-    return remaining / daysLeft;
 }
 
 function expectedRemainingToday() {
+    if (!isCurrentPeriod()) return budgetData.amount - totalSpent();
     const today = fmtDate(new Date());
+    const avgDaily = periodDays.length > 0 ? budgetData.amount / periodDays.length : 0;
     let daysPassed = 0;
     for (const day of periodDays) {
         if (day <= today) daysPassed++;
     }
-    return budgetData.amount - dailyBudget() * daysPassed;
+    return budgetData.amount - avgDaily * daysPassed;
+}
+
+// ----- Navigace mezi obdobími -----
+function goToPeriod(offset) {
+    periodOffset = offset;
+    openDay = null;
+    computePeriod(periodOffset);
+
+    // Aktualizuj tlačítko "Aktuální období"
+    todayBtn.classList.toggle("hidden", isCurrentPeriod());
+
+    loadPeriodData();
+}
+
+function loadPeriodData() {
+    // Zruš předchozí Firestore listener
+    if (unsubscribeBudget) {
+        unsubscribeBudget();
+        unsubscribeBudget = null;
+    }
+
+    if (currentUser) {
+        const ref = doc(db, "users", currentUser.uid, "budget", periodKey());
+        unsubscribeBudget = onSnapshot(
+            ref,
+            (snapshot) => {
+                if (snapshot.exists()) {
+                    budgetData = { ...defaultBudget(), ...snapshot.data() };
+                    budgetData.expenses = migrateExpenses(budgetData.expenses);
+                } else {
+                    budgetData = defaultBudget();
+                }
+                amountEl.value = budgetData.amount || "";
+                render();
+            },
+            (err) => {
+                console.error("Firestore chyba:", err);
+                budgetData = defaultBudget();
+                amountEl.value = "";
+                render();
+                alert(
+                    "Nepodařilo se načíst rozpočet z cloudu. Zkontroluj Firestore pravidla.\n\n" +
+                    err.message
+                );
+            }
+        );
+    } else {
+        const allData = loadLocal();
+        budgetData = getBudgetForPeriod(allData);
+        budgetData.expenses = migrateExpenses(budgetData.expenses);
+        amountEl.value = budgetData.amount || "";
+        render();
+    }
 }
 
 // ----- Vykreslení -----
@@ -168,7 +241,7 @@ function render() {
 
 function renderPeriod() {
     periodEl.textContent =
-        "Období: " + fmtDateCZ(fmtDate(periodStart)) + " – " + fmtDateCZ(fmtDate(periodEnd));
+        fmtDateCZ(fmtDate(periodStart)) + " – " + fmtDateCZ(fmtDate(periodEnd));
 }
 
 function renderSummary() {
@@ -225,6 +298,10 @@ function renderCalendar() {
         grid.appendChild(empty);
     }
 
+    // Pro historické období: poměr k průměrnému dennímu budgetu
+    const avgDaily = periodDays.length > 0 ? budgetData.amount / periodDays.length : 0;
+    const colorDaily = isCurrentPeriod() ? daily : avgDaily;
+
     periodDays.forEach((dateStr) => {
         const cell = document.createElement("div");
         cell.className = "budget-cal-cell";
@@ -232,8 +309,8 @@ function renderCalendar() {
         const spent = daySpent(dateStr);
         const dayNum = parseInt(dateStr.split("-")[2]);
 
-        if (daily > 0) {
-            const ratio = spent / daily;
+        if (colorDaily > 0) {
+            const ratio = spent / colorDaily;
             if (spent === 0) {
                 cell.classList.add("budget-day-neutral");
             } else if (ratio <= 1) {
@@ -259,13 +336,11 @@ function renderCalendar() {
             cell.appendChild(spentEl);
         }
 
-        // Klik → otevři / zavři bublinu
         cell.addEventListener("click", (e) => {
             e.stopPropagation();
-            toggleBubble(dateStr, cell);
+            toggleBubble(dateStr);
         });
 
-        // Pokud je den právě otevřený, přidej bublinu
         if (openDay === dateStr) {
             cell.classList.add("budget-cell-open");
             cell.appendChild(createBubble(dateStr));
@@ -278,12 +353,8 @@ function renderCalendar() {
 }
 
 // ----- Inline bublina (+/- ovládání) -----
-function toggleBubble(dateStr, cell) {
-    if (openDay === dateStr) {
-        openDay = null;
-    } else {
-        openDay = dateStr;
-    }
+function toggleBubble(dateStr) {
+    openDay = openDay === dateStr ? null : dateStr;
     renderCalendar();
 }
 
@@ -317,7 +388,6 @@ function createBubble(dateStr) {
     bubble.appendChild(valueEl);
     bubble.appendChild(plusBtn);
 
-    // Zastav klik, aby se bublina nezavřela klikem na sebe
     bubble.addEventListener("click", (e) => e.stopPropagation());
 
     return bubble;
@@ -337,7 +407,6 @@ function changeExpense(dateStr, delta) {
     renderCalendar();
 }
 
-// Zavři bublinu klikem kamkoliv mimo
 document.addEventListener("click", () => {
     if (openDay !== null) {
         openDay = null;
@@ -359,48 +428,14 @@ function onBudgetAmountChange() {
 
 // ----- Event listeners -----
 amountEl.addEventListener("input", onBudgetAmountChange);
+prevBtn.addEventListener("click", () => goToPeriod(periodOffset - 1));
+nextBtn.addEventListener("click", () => goToPeriod(periodOffset + 1));
+todayBtn.addEventListener("click", () => goToPeriod(0));
 
 // ----- Inicializace -----
-computePeriod();
+computePeriod(0);
 
 initNavigation("rozpocet", (user) => {
     currentUser = user;
-
-    if (unsubscribeBudget) {
-        unsubscribeBudget();
-        unsubscribeBudget = null;
-    }
-
-    if (user) {
-        const ref = doc(db, "users", user.uid, "budget", periodKey());
-        unsubscribeBudget = onSnapshot(
-            ref,
-            (snapshot) => {
-                if (snapshot.exists()) {
-                    budgetData = { ...defaultBudget(), ...snapshot.data() };
-                    budgetData.expenses = migrateExpenses(budgetData.expenses);
-                } else {
-                    budgetData = defaultBudget();
-                }
-                amountEl.value = budgetData.amount || "";
-                render();
-            },
-            (err) => {
-                console.error("Firestore chyba:", err);
-                budgetData = defaultBudget();
-                amountEl.value = "";
-                render();
-                alert(
-                    "Nepodařilo se načíst rozpočet z cloudu. Zkontroluj Firestore pravidla.\n\n" +
-                    err.message
-                );
-            }
-        );
-    } else {
-        const allData = loadLocal();
-        budgetData = getBudgetForPeriod(allData);
-        budgetData.expenses = migrateExpenses(budgetData.expenses);
-        amountEl.value = budgetData.amount || "";
-        render();
-    }
+    loadPeriodData();
 });
