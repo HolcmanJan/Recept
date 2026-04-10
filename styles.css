@@ -1276,11 +1276,21 @@ body.menu-open {
     border-radius: 10px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
     display: flex;
-    align-items: center;
-    gap: 0;
+    flex-direction: column;
+    gap: 0.15rem;
     white-space: nowrap;
     padding: 0.15rem;
     z-index: 20;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.budget-bubble-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
 }
 
 .budget-bubble::after {
@@ -1316,6 +1326,13 @@ body.menu-open {
 
 .budget-bubble-btn:active {
     background: #d1d5db;
+}
+
+.budget-bubble-btn-lg {
+    flex: 1;
+    width: auto;
+    font-size: 0.8rem;
+    font-weight: 600;
 }
 
 .budget-bubble-value {
