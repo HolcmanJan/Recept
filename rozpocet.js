@@ -140,8 +140,14 @@ function totalSpent() {
 }
 
 function dailyBudget() {
-    if (periodDays.length === 0) return 0;
-    return budgetData.amount / periodDays.length;
+    const today = fmtDate(new Date());
+    const remaining = budgetData.amount - totalSpent();
+    let daysLeft = 0;
+    for (const day of periodDays) {
+        if (day >= today) daysLeft++;
+    }
+    if (daysLeft <= 0) return 0;
+    return remaining / daysLeft;
 }
 
 function expectedRemainingToday() {
