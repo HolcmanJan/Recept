@@ -1,5 +1,5 @@
 // Stránka s uživatelskými záložkami (URL → dlaždice s náhledem).
-// Metadata stránek se získávají přes microlink.io, screenshot fallback přes thum.io.
+// Metadata stránek se získávají přes microlink.io.
 import { db } from "./firebase-init.js";
 import {
     collection,
@@ -13,6 +13,7 @@ import { initNavigation } from "./navigation.js";
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const PREVIEW_API = "https://api.microlink.io/?url=";
+const TABS = ["all", "1", "2", "3", "4"];
 
 // ----- Stav -----
 let bookmarks = [];
@@ -20,6 +21,7 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
+let activeTab = "all";
 
 // ----- DOM -----
 const formEl = document.getElementById("bookmark-form");
@@ -30,6 +32,26 @@ const gridEl = document.getElementById("bookmarks-grid");
 const emptyEl = document.getElementById("bookmarks-empty");
 const sentinelEl = document.getElementById("scroll-sentinel");
 const endEl = document.getElementById("bookmarks-end");
+const tabsEl = document.getElementById("bookmark-tabs");
+
+// ----- Záložkové přepínače -----
+tabsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".bookmark-tab");
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    if (tab === activeTab) return;
+    activeTab = tab;
+    tabsEl.querySelectorAll(".bookmark-tab").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === activeTab);
+    });
+    resetRender();
+});
+
+// ----- Filtr podle záložky -----
+function filteredBookmarks() {
+    if (activeTab === "all") return bookmarks;
+    return bookmarks.filter((b) => b.tab === activeTab);
+}
 
 // ----- Inicializace navigace + reakce na změnu uživatele -----
 initNavigation("zalozky", (user) => {
@@ -210,6 +232,7 @@ async function handleSubmit(event) {
             image: preview.image,
             domain: preview.domain,
             favorite: false,
+            tab: activeTab === "all" ? null : activeTab,
             createdAt: Date.now(),
         };
         await persistBookmark(bookmark);
@@ -249,8 +272,14 @@ function resetRender() {
     gridEl.innerHTML = "";
     renderedCount = 0;
 
-    if (bookmarks.length === 0) {
+    const filtered = filteredBookmarks();
+
+    if (filtered.length === 0) {
         emptyEl.classList.remove("hidden");
+        emptyEl.textContent =
+            activeTab === "all" && bookmarks.length === 0
+                ? "Zatím tu nejsou žádné záložky. Vlož nahoře první URL!"
+                : "V této záložce nejsou žádné odkazy.";
         endEl.classList.add("hidden");
         disconnectObserver();
         return;
@@ -262,13 +291,14 @@ function resetRender() {
 }
 
 function renderNextPage() {
-    const nextCount = Math.min(renderedCount + PAGE_SIZE, bookmarks.length);
+    const filtered = filteredBookmarks();
+    const nextCount = Math.min(renderedCount + PAGE_SIZE, filtered.length);
     for (let i = renderedCount; i < nextCount; i++) {
-        gridEl.appendChild(createTile(bookmarks[i]));
+        gridEl.appendChild(createTile(filtered[i]));
     }
     renderedCount = nextCount;
 
-    if (renderedCount >= bookmarks.length) {
+    if (renderedCount >= filtered.length) {
         disconnectObserver();
         endEl.classList.remove("hidden");
     } else {
@@ -281,7 +311,7 @@ function ensureObserver() {
     observer = new IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
-                if (entry.isIntersecting && renderedCount < bookmarks.length) {
+                if (entry.isIntersecting && renderedCount < filteredBookmarks().length) {
                     renderNextPage();
                 }
             }
