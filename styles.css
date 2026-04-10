@@ -1281,6 +1281,9 @@ body.menu-open {
     white-space: nowrap;
     padding: 0.15rem;
     z-index: 20;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
 }
 
 .budget-bubble::after {
