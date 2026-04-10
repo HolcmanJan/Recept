@@ -146,11 +146,6 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
-function screenshotUrl(url) {
-    // thum.io poskytuje screenshot webu jako obrázek, bez API klíče.
-    return "https://image.thum.io/get/width/400/crop/280/" + url;
-}
-
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
@@ -166,15 +161,15 @@ async function fetchPreview(url) {
         return {
             title: d.title || hostname,
             description: d.description || "",
-            image: (d.image && d.image.url) || screenshotUrl(url),
+            image: (d.image && d.image.url) || "",
             domain: d.publisher || hostname,
         };
     } catch (err) {
-        console.warn("Náhled se nepodařilo načíst, použije se screenshot:", err);
+        console.warn("Náhled se nepodařilo načíst:", err);
         return {
             title: hostname,
             description: "",
-            image: screenshotUrl(url),
+            image: "",
             domain: hostname,
         };
     }
@@ -333,23 +328,22 @@ function createTile(bookmark) {
     // Obrázek
     const imgWrap = document.createElement("div");
     imgWrap.className = "bookmark-image";
-    const img = document.createElement("img");
-    img.src = bookmark.image || screenshotUrl(bookmark.url);
-    img.loading = "lazy";
-    img.alt = "";
-    img.draggable = false;
-    let triedScreenshot = img.src.startsWith("https://image.thum.io/");
-    img.addEventListener("error", () => {
-        if (!triedScreenshot) {
-            triedScreenshot = true;
-            img.src = screenshotUrl(bookmark.url);
-        } else {
+    if (bookmark.image) {
+        const img = document.createElement("img");
+        img.src = bookmark.image;
+        img.loading = "lazy";
+        img.alt = "";
+        img.draggable = false;
+        img.addEventListener("error", () => {
             imgWrap.innerHTML = "";
             imgWrap.classList.add("bookmark-image-fallback");
             imgWrap.textContent = "🔗";
-        }
-    });
-    imgWrap.appendChild(img);
+        });
+        imgWrap.appendChild(img);
+    } else {
+        imgWrap.classList.add("bookmark-image-fallback");
+        imgWrap.textContent = "🔗";
+    }
     link.appendChild(imgWrap);
 
     // Tělo
@@ -426,9 +420,12 @@ function attachSwipe(tileEl, contentEl, onDelete) {
         startX = e.clientX;
         currentDx = 0;
         contentEl.style.transition = "none";
-        try {
-            contentEl.setPointerCapture(e.pointerId);
-        } catch {}
+        // Pointer capture jen pro touch – na myši blokuje klik na <a>
+        if (e.pointerType !== "mouse") {
+            try {
+                contentEl.setPointerCapture(e.pointerId);
+            } catch {}
+        }
     }
 
     function onMove(e) {
