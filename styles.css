@@ -839,6 +839,43 @@ body.menu-open {
     color: #991b1b;
 }
 
+.bookmark-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f3f4f6;
+}
+
+.bookmark-tab {
+    flex: 1;
+    padding: 0.55rem 0.25rem;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.bookmark-tab + .bookmark-tab {
+    border-left: 1px solid var(--border);
+}
+
+.bookmark-tab:hover {
+    background: #e5e7eb;
+    color: var(--text);
+}
+
+.bookmark-tab.active {
+    background: var(--primary);
+    color: #fff;
+}
+
 .bookmarks-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
