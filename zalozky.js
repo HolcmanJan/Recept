@@ -401,6 +401,37 @@ function createTile(bookmark) {
     });
     tile.appendChild(starBtn);
 
+    // Výběr záložky (přeřazení)
+    const tabSelect = document.createElement("select");
+    tabSelect.className = "bookmark-tab-select";
+    tabSelect.setAttribute("aria-label", "Přesunout do záložky");
+    const tabOptions = [
+        { value: "", label: "—" },
+        { value: "1", label: "1" },
+        { value: "2", label: "2" },
+        { value: "3", label: "3" },
+        { value: "4", label: "4" },
+    ];
+    tabOptions.forEach((opt) => {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if ((bookmark.tab || "") === opt.value) option.selected = true;
+        tabSelect.appendChild(option);
+    });
+    tabSelect.addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const newTab = tabSelect.value || null;
+        try {
+            await updateBookmark({ ...bookmark, tab: newTab });
+        } catch (err) {
+            console.error(err);
+            alert("Chyba: " + err.message);
+        }
+    });
+    tabSelect.addEventListener("click", (e) => e.stopPropagation());
+    tile.appendChild(tabSelect);
+
     // Tlačítko smazání (pravý pruh přes celou výšku)
     const delBtn = document.createElement("button");
     delBtn.type = "button";
