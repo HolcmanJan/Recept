@@ -39,9 +39,14 @@ const tabsEl = document.getElementById("bookmark-tabs");
 const featuredEl = document.getElementById("bookmark-featured");
 const featuredGridEl = document.getElementById("bookmark-featured-grid");
 const featuredRefreshBtn = document.getElementById("featured-refresh");
+const featuredFixBtn = document.getElementById("featured-fix");
 
 featuredRefreshBtn.addEventListener("click", () => {
     renderFeatured();
+});
+
+featuredFixBtn.addEventListener("click", () => {
+    fixBrokenPreviews();
 });
 
 // ----- Záložkové přepínače -----
@@ -387,6 +392,78 @@ function renderNextPage() {
         endEl.classList.remove("hidden");
     } else {
         endEl.classList.add("hidden");
+    }
+}
+
+// ----- Oprava chybějících náhledů -----
+function isImageLoadable(url) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(false);
+        const img = new Image();
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            resolve(ok);
+        };
+        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+        img.onerror = () => finish(false);
+        img.src = url;
+        setTimeout(() => finish(false), 8000);
+    });
+}
+
+async function fixBrokenPreviews() {
+    const filtered = filteredBookmarks();
+    if (filtered.length === 0) {
+        showStatus("V této složce nejsou žádné záložky.", "info");
+        return;
+    }
+
+    featuredFixBtn.disabled = true;
+    featuredFixBtn.classList.add("is-loading");
+
+    let fixed = 0;
+    let checked = 0;
+
+    try {
+        for (const bookmark of filtered) {
+            checked++;
+            showStatus(
+                "Opravuji náhledy… " + checked + "/" + filtered.length,
+                "info"
+            );
+
+            const works = await isImageLoadable(bookmark.image);
+            if (works) continue;
+
+            try {
+                const preview = await fetchPreview(bookmark.url);
+                if (preview.image && preview.image !== bookmark.image) {
+                    await updateBookmark({
+                        ...bookmark,
+                        title: preview.title || bookmark.title,
+                        description: preview.description || bookmark.description,
+                        image: preview.image,
+                        domain: preview.domain || bookmark.domain,
+                    });
+                    fixed++;
+                }
+            } catch (err) {
+                console.warn("Nelze aktualizovat náhled pro", bookmark.url, err);
+            }
+
+            // Šetrné tempo vůči microlink.io
+            await new Promise((r) => setTimeout(r, 300));
+        }
+
+        showStatus(
+            "Opraveno " + fixed + " z " + filtered.length + " záložek.",
+            "ok"
+        );
+    } finally {
+        featuredFixBtn.disabled = false;
+        featuredFixBtn.classList.remove("is-loading");
     }
 }
 

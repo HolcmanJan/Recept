@@ -895,6 +895,12 @@ body.menu-open {
     letter-spacing: 0.08em;
 }
 
+.bookmark-featured-actions {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
 .bookmark-featured-refresh {
     width: 2rem;
     height: 2rem;
@@ -902,7 +908,7 @@ body.menu-open {
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
-    font-size: 1.1rem;
+    font-size: 1rem;
     line-height: 1;
     cursor: pointer;
     display: flex;
@@ -911,15 +917,29 @@ body.menu-open {
     transition: transform 0.4s ease, background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.bookmark-featured-refresh:hover {
+.bookmark-featured-refresh:hover:not(:disabled) {
     background: var(--primary);
     color: #fff;
     border-color: var(--primary);
     transform: rotate(180deg);
 }
 
-.bookmark-featured-refresh:active {
+.bookmark-featured-refresh:active:not(:disabled) {
     transform: rotate(360deg);
+}
+
+.bookmark-featured-refresh:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.bookmark-featured-refresh.is-loading {
+    animation: bookmark-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes bookmark-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
 }
 
 .bookmark-featured-grid {
