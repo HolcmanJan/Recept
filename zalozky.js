@@ -13,7 +13,8 @@ import { initNavigation } from "./navigation.js";
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const PREVIEW_API = "https://api.microlink.io/?url=";
-const TABS = ["all", "1", "2", "3", "4"];
+const TABS = ["unassigned", "1", "2", "3", "4"];
+const TAB_2_PASSWORD = "abc129";
 
 // ----- Stav -----
 let bookmarks = [];
@@ -21,7 +22,8 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
-let activeTab = "all";
+let activeTab = "unassigned";
+let tab2Unlocked = false;
 
 // ----- DOM -----
 const formEl = document.getElementById("bookmark-form");
@@ -40,6 +42,18 @@ tabsEl.addEventListener("click", (e) => {
     if (!btn) return;
     const tab = btn.dataset.tab;
     if (tab === activeTab) return;
+
+    // Heslem chráněná složka 2
+    if (tab === "2" && !tab2Unlocked) {
+        const pwd = prompt("Heslo pro složku 2:");
+        if (pwd === null) return;
+        if (pwd !== TAB_2_PASSWORD) {
+            alert("Nesprávné heslo.");
+            return;
+        }
+        tab2Unlocked = true;
+    }
+
     activeTab = tab;
     tabsEl.querySelectorAll(".bookmark-tab").forEach((b) => {
         b.classList.toggle("active", b.dataset.tab === activeTab);
@@ -47,9 +61,11 @@ tabsEl.addEventListener("click", (e) => {
     resetRender();
 });
 
-// ----- Filtr podle záložky -----
+// ----- Filtr podle složky -----
 function filteredBookmarks() {
-    if (activeTab === "all") return bookmarks;
+    if (activeTab === "unassigned") {
+        return bookmarks.filter((b) => !b.tab);
+    }
     return bookmarks.filter((b) => b.tab === activeTab);
 }
 
@@ -232,7 +248,7 @@ async function handleSubmit(event) {
             image: preview.image,
             domain: preview.domain,
             favorite: false,
-            tab: activeTab === "all" ? null : activeTab,
+            tab: activeTab === "unassigned" ? null : activeTab,
             createdAt: Date.now(),
         };
         await persistBookmark(bookmark);
@@ -277,9 +293,9 @@ function resetRender() {
     if (filtered.length === 0) {
         emptyEl.classList.remove("hidden");
         emptyEl.textContent =
-            activeTab === "all" && bookmarks.length === 0
+            bookmarks.length === 0
                 ? "Zatím tu nejsou žádné záložky. Vlož nahoře první URL!"
-                : "V této záložce nejsou žádné odkazy.";
+                : "V této složce nejsou žádné odkazy.";
         endEl.classList.add("hidden");
         disconnectObserver();
         return;
