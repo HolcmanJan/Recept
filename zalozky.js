@@ -12,8 +12,10 @@ import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
+const FEATURED_COUNT = 6;
 const PREVIEW_API = "https://api.microlink.io/?url=";
-const TABS = ["all", "1", "2", "3", "4"];
+const TABS = ["unassigned", "1", "2", "3", "4"];
+const TAB_2_PASSWORD = "abc129";
 
 // ----- Stav -----
 let bookmarks = [];
@@ -21,7 +23,8 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
-let activeTab = "all";
+let activeTab = "unassigned";
+let tab2Unlocked = false;
 
 // ----- DOM -----
 const formEl = document.getElementById("bookmark-form");
@@ -33,6 +36,18 @@ const emptyEl = document.getElementById("bookmarks-empty");
 const sentinelEl = document.getElementById("scroll-sentinel");
 const endEl = document.getElementById("bookmarks-end");
 const tabsEl = document.getElementById("bookmark-tabs");
+const featuredEl = document.getElementById("bookmark-featured");
+const featuredGridEl = document.getElementById("bookmark-featured-grid");
+const featuredRefreshBtn = document.getElementById("featured-refresh");
+const featuredFixBtn = document.getElementById("featured-fix");
+
+featuredRefreshBtn.addEventListener("click", () => {
+    renderFeatured();
+});
+
+featuredFixBtn.addEventListener("click", () => {
+    fixBrokenPreviews();
+});
 
 // ----- Záložkové přepínače -----
 tabsEl.addEventListener("click", (e) => {
@@ -40,6 +55,18 @@ tabsEl.addEventListener("click", (e) => {
     if (!btn) return;
     const tab = btn.dataset.tab;
     if (tab === activeTab) return;
+
+    // Heslem chráněná složka 2
+    if (tab === "2" && !tab2Unlocked) {
+        const pwd = prompt("Heslo pro složku 2:");
+        if (pwd === null) return;
+        if (pwd !== TAB_2_PASSWORD) {
+            alert("Nesprávné heslo.");
+            return;
+        }
+        tab2Unlocked = true;
+    }
+
     activeTab = tab;
     tabsEl.querySelectorAll(".bookmark-tab").forEach((b) => {
         b.classList.toggle("active", b.dataset.tab === activeTab);
@@ -47,9 +74,11 @@ tabsEl.addEventListener("click", (e) => {
     resetRender();
 });
 
-// ----- Filtr podle záložky -----
+// ----- Filtr podle složky -----
 function filteredBookmarks() {
-    if (activeTab === "all") return bookmarks;
+    if (activeTab === "unassigned") {
+        return bookmarks.filter((b) => !b.tab);
+    }
     return bookmarks.filter((b) => b.tab === activeTab);
 }
 
@@ -232,7 +261,7 @@ async function handleSubmit(event) {
             image: preview.image,
             domain: preview.domain,
             favorite: false,
-            tab: activeTab === "all" ? null : activeTab,
+            tab: activeTab === "unassigned" ? null : activeTab,
             createdAt: Date.now(),
         };
         await persistBookmark(bookmark);
@@ -274,12 +303,14 @@ function resetRender() {
 
     const filtered = filteredBookmarks();
 
+    renderFeatured();
+
     if (filtered.length === 0) {
         emptyEl.classList.remove("hidden");
         emptyEl.textContent =
-            activeTab === "all" && bookmarks.length === 0
+            bookmarks.length === 0
                 ? "Zatím tu nejsou žádné záložky. Vlož nahoře první URL!"
-                : "V této záložce nejsou žádné odkazy.";
+                : "V této složce nejsou žádné odkazy.";
         endEl.classList.add("hidden");
         disconnectObserver();
         return;
@@ -288,6 +319,64 @@ function resetRender() {
 
     renderNextPage();
     ensureObserver();
+}
+
+// ----- Náhodný výběr 6 záložek -----
+function pickRandom(arr, n) {
+    if (arr.length <= n) return arr.slice();
+    const picks = [];
+    const used = new Set();
+    while (picks.length < n) {
+        const idx = Math.floor(Math.random() * arr.length);
+        if (used.has(idx)) continue;
+        used.add(idx);
+        picks.push(arr[idx]);
+    }
+    return picks;
+}
+
+function renderFeatured() {
+    const filtered = filteredBookmarks();
+    featuredGridEl.innerHTML = "";
+
+    if (filtered.length === 0) {
+        featuredEl.classList.add("hidden");
+        return;
+    }
+    featuredEl.classList.remove("hidden");
+
+    const picks = pickRandom(filtered, FEATURED_COUNT);
+    for (const bookmark of picks) {
+        featuredGridEl.appendChild(createFeaturedTile(bookmark));
+    }
+}
+
+function createFeaturedTile(bookmark) {
+    const link = document.createElement("a");
+    link.href = bookmark.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "bookmark-featured-item";
+    link.title = bookmark.title || bookmark.url;
+    link.draggable = false;
+
+    if (bookmark.image) {
+        const img = document.createElement("img");
+        img.src = bookmark.image;
+        img.loading = "lazy";
+        img.alt = bookmark.title || "";
+        img.draggable = false;
+        img.addEventListener("error", () => {
+            link.innerHTML = "";
+            link.classList.add("bookmark-featured-fallback");
+            link.textContent = "🔗";
+        });
+        link.appendChild(img);
+    } else {
+        link.classList.add("bookmark-featured-fallback");
+        link.textContent = "🔗";
+    }
+    return link;
 }
 
 function renderNextPage() {
@@ -303,6 +392,78 @@ function renderNextPage() {
         endEl.classList.remove("hidden");
     } else {
         endEl.classList.add("hidden");
+    }
+}
+
+// ----- Oprava chybějících náhledů -----
+function isImageLoadable(url) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(false);
+        const img = new Image();
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            resolve(ok);
+        };
+        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+        img.onerror = () => finish(false);
+        img.src = url;
+        setTimeout(() => finish(false), 8000);
+    });
+}
+
+async function fixBrokenPreviews() {
+    const filtered = filteredBookmarks();
+    if (filtered.length === 0) {
+        showStatus("V této složce nejsou žádné záložky.", "info");
+        return;
+    }
+
+    featuredFixBtn.disabled = true;
+    featuredFixBtn.classList.add("is-loading");
+
+    let fixed = 0;
+    let checked = 0;
+
+    try {
+        for (const bookmark of filtered) {
+            checked++;
+            showStatus(
+                "Opravuji náhledy… " + checked + "/" + filtered.length,
+                "info"
+            );
+
+            const works = await isImageLoadable(bookmark.image);
+            if (works) continue;
+
+            try {
+                const preview = await fetchPreview(bookmark.url);
+                if (preview.image && preview.image !== bookmark.image) {
+                    await updateBookmark({
+                        ...bookmark,
+                        title: preview.title || bookmark.title,
+                        description: preview.description || bookmark.description,
+                        image: preview.image,
+                        domain: preview.domain || bookmark.domain,
+                    });
+                    fixed++;
+                }
+            } catch (err) {
+                console.warn("Nelze aktualizovat náhled pro", bookmark.url, err);
+            }
+
+            // Šetrné tempo vůči microlink.io
+            await new Promise((r) => setTimeout(r, 300));
+        }
+
+        showStatus(
+            "Opraveno " + fixed + " z " + filtered.length + " záložek.",
+            "ok"
+        );
+    } finally {
+        featuredFixBtn.disabled = false;
+        featuredFixBtn.classList.remove("is-loading");
     }
 }
 
