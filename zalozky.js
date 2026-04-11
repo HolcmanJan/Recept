@@ -441,6 +441,9 @@ function createTile(bookmark) {
     delBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const label = bookmark.title || bookmark.url;
+        const ok = window.confirm("Opravdu smazat záložku?\n\n" + label);
+        if (!ok) return;
         try {
             await removeBookmark(bookmark.id);
         } catch (err) {
