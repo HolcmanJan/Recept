@@ -12,6 +12,7 @@ import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
+const FEATURED_COUNT = 6;
 const PREVIEW_API = "https://api.microlink.io/?url=";
 const TABS = ["unassigned", "1", "2", "3", "4"];
 const TAB_2_PASSWORD = "abc129";
@@ -35,6 +36,13 @@ const emptyEl = document.getElementById("bookmarks-empty");
 const sentinelEl = document.getElementById("scroll-sentinel");
 const endEl = document.getElementById("bookmarks-end");
 const tabsEl = document.getElementById("bookmark-tabs");
+const featuredEl = document.getElementById("bookmark-featured");
+const featuredGridEl = document.getElementById("bookmark-featured-grid");
+const featuredRefreshBtn = document.getElementById("featured-refresh");
+
+featuredRefreshBtn.addEventListener("click", () => {
+    renderFeatured();
+});
 
 // ----- Záložkové přepínače -----
 tabsEl.addEventListener("click", (e) => {
@@ -290,6 +298,8 @@ function resetRender() {
 
     const filtered = filteredBookmarks();
 
+    renderFeatured();
+
     if (filtered.length === 0) {
         emptyEl.classList.remove("hidden");
         emptyEl.textContent =
@@ -304,6 +314,64 @@ function resetRender() {
 
     renderNextPage();
     ensureObserver();
+}
+
+// ----- Náhodný výběr 6 záložek -----
+function pickRandom(arr, n) {
+    if (arr.length <= n) return arr.slice();
+    const picks = [];
+    const used = new Set();
+    while (picks.length < n) {
+        const idx = Math.floor(Math.random() * arr.length);
+        if (used.has(idx)) continue;
+        used.add(idx);
+        picks.push(arr[idx]);
+    }
+    return picks;
+}
+
+function renderFeatured() {
+    const filtered = filteredBookmarks();
+    featuredGridEl.innerHTML = "";
+
+    if (filtered.length === 0) {
+        featuredEl.classList.add("hidden");
+        return;
+    }
+    featuredEl.classList.remove("hidden");
+
+    const picks = pickRandom(filtered, FEATURED_COUNT);
+    for (const bookmark of picks) {
+        featuredGridEl.appendChild(createFeaturedTile(bookmark));
+    }
+}
+
+function createFeaturedTile(bookmark) {
+    const link = document.createElement("a");
+    link.href = bookmark.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "bookmark-featured-item";
+    link.title = bookmark.title || bookmark.url;
+    link.draggable = false;
+
+    if (bookmark.image) {
+        const img = document.createElement("img");
+        img.src = bookmark.image;
+        img.loading = "lazy";
+        img.alt = bookmark.title || "";
+        img.draggable = false;
+        img.addEventListener("error", () => {
+            link.innerHTML = "";
+            link.classList.add("bookmark-featured-fallback");
+            link.textContent = "🔗";
+        });
+        link.appendChild(img);
+    } else {
+        link.classList.add("bookmark-featured-fallback");
+        link.textContent = "🔗";
+    }
+    return link;
 }
 
 function renderNextPage() {
