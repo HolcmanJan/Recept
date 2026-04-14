@@ -1780,6 +1780,18 @@ body.menu-open {
     font-size: 1.3rem;
     color: #fff;
     flex-shrink: 0;
+    overflow: hidden;
+}
+
+.exercise-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.exercise-icon-img {
+    background: var(--bg);
 }
 
 .active-exercise-info {
@@ -2086,4 +2098,242 @@ body.menu-open {
 /* Dlaždice cvičení na home */
 .tile-workout {
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+
+/* ===== „Moje cviky" - grid karet ===== */
+.exercises-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+
+.exercise-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: var(--text);
+    transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.exercise-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.exercise-card-thumb {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    color: #fff;
+    overflow: hidden;
+}
+
+.exercise-card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.exercise-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.exercise-card-body strong {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.exercise-card-stats {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+/* ===== Detail cviku ===== */
+.detail-back {
+    align-self: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.detail-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.detail-image {
+    width: 96px;
+    height: 96px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 2.6rem;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg);
+}
+
+.detail-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.detail-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.detail-info h2 {
+    margin: 0;
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+
+.detail-group {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.detail-upload {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.detail-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.detail-stat {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.detail-stat strong {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.detail-stat span {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ===== Graf progresu ===== */
+.chart-wrap {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.75rem;
+}
+
+.progress-chart {
+    display: block;
+    width: 100%;
+    height: 220px;
+}
+
+.chart-grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    fill: none;
+}
+
+.chart-axis {
+    font-size: 10px;
+    fill: var(--muted);
+    font-family: inherit;
+}
+
+.chart-area {
+    fill: var(--primary);
+    fill-opacity: 0.12;
+    stroke: none;
+}
+
+.chart-line {
+    stroke: var(--primary);
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chart-point {
+    fill: var(--primary);
+    stroke: #fff;
+    stroke-width: 2;
+}
+
+/* ===== Poslední tréninky v detailu ===== */
+.detail-sessions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detail-session-row {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 0.5rem 1rem;
+    align-items: baseline;
+    font-size: 0.85rem;
+}
+
+.detail-session-row span:first-child {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.detail-session-metric {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
 }

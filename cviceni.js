@@ -100,16 +100,34 @@ const STATS_LOCAL = "recept.workout.stats";
 let currentUser = null;
 let unsubTemplates = null;
 let unsubHistory = null;
+let unsubStats = null;
 let templates = [];
 let history = [];
+let exerciseStats = {}; // { exerciseId: {sessions, totalVolume, bestWeight, totalSets, lastUsedAt, customImage} }
 let activeWorkout = null;
 let timerInterval = null;
 let pickerFilter = "all";
 let pickerSearch = "";
+let detailExerciseId = null;
 
 // ===== DOM =====
 const viewHome = document.getElementById("view-home");
 const viewActive = document.getElementById("view-active");
+const viewDetail = document.getElementById("view-detail");
+
+const exercisesListEl = document.getElementById("exercises-list");
+const exercisesEmptyEl = document.getElementById("exercises-empty");
+
+const btnDetailBack = document.getElementById("btn-detail-back");
+const detailImageEl = document.getElementById("detail-image");
+const detailNameEl = document.getElementById("detail-name");
+const detailGroupEl = document.getElementById("detail-group");
+const detailImageInput = document.getElementById("detail-image-input");
+const btnImageRemove = document.getElementById("btn-image-remove");
+const detailStatsEl = document.getElementById("detail-stats");
+const detailChartEl = document.getElementById("detail-chart");
+const detailChartEmptyEl = document.getElementById("detail-chart-empty");
+const detailSessionsEl = document.getElementById("detail-sessions");
 
 const btnStart = document.getElementById("btn-start-workout");
 const btnAddExercise = document.getElementById("btn-add-exercise");
@@ -241,6 +259,8 @@ function saveLocalStats(stats) {
 function showView(name) {
     viewHome.classList.toggle("hidden", name !== "home");
     viewActive.classList.toggle("hidden", name !== "active");
+    viewDetail.classList.toggle("hidden", name !== "detail");
+    window.scrollTo({ top: 0, behavior: "instant" });
 }
 
 // ===== Inicializace — navigace + auth =====
@@ -249,8 +269,24 @@ initNavigation("cviceni", (user) => {
 
     if (unsubTemplates) { unsubTemplates(); unsubTemplates = null; }
     if (unsubHistory) { unsubHistory(); unsubHistory = null; }
+    if (unsubStats) { unsubStats(); unsubStats = null; }
 
     if (user) {
+        // Statistiky cviků
+        unsubStats = onSnapshot(
+            collection(db, "users", user.uid, "exerciseStats"),
+            (snap) => {
+                exerciseStats = {};
+                snap.docs.forEach((d) => {
+                    exerciseStats[d.id] = { exerciseId: d.id, ...d.data() };
+                });
+                renderExercisesList();
+                if (detailExerciseId && !viewDetail.classList.contains("hidden")) {
+                    renderDetail();
+                }
+            },
+            (err) => console.error("Stats:", err)
+        );
         // Šablony
         unsubTemplates = onSnapshot(
             collection(db, "users", user.uid, "workoutTemplates"),
@@ -277,8 +313,10 @@ initNavigation("cviceni", (user) => {
     } else {
         templates = loadLocalArray(TEMPLATES_LOCAL);
         history = loadLocalArray(HISTORY_LOCAL);
+        exerciseStats = loadLocalStats();
         renderTemplates();
         renderHistory();
+        renderExercisesList();
     }
 });
 
@@ -388,8 +426,17 @@ function renderActive() {
 
         const icon = document.createElement("div");
         icon.className = "exercise-icon";
-        icon.style.background = group ? group.color : "#6b7280";
-        icon.textContent = info.icon;
+        const customImg = exerciseStats[ex.exerciseId]?.customImage;
+        if (customImg) {
+            const img = document.createElement("img");
+            img.src = customImg;
+            img.alt = info.name;
+            icon.appendChild(img);
+            icon.classList.add("exercise-icon-img");
+        } else {
+            icon.style.background = group ? group.color : "#6b7280";
+            icon.textContent = info.icon;
+        }
         head.appendChild(icon);
 
         const info2 = document.createElement("div");
@@ -616,14 +663,23 @@ function renderPickerList() {
     }
     for (const ex of items) {
         const group = GROUP_BY_ID[ex.group];
+        const customImg = exerciseStats[ex.id]?.customImage;
         const it = document.createElement("button");
         it.type = "button";
         it.className = "picker-item";
 
         const icon = document.createElement("div");
         icon.className = "exercise-icon";
-        icon.style.background = group ? group.color : "#6b7280";
-        icon.textContent = ex.icon;
+        if (customImg) {
+            const img = document.createElement("img");
+            img.src = customImg;
+            img.alt = ex.name;
+            icon.appendChild(img);
+            icon.classList.add("exercise-icon-img");
+        } else {
+            icon.style.background = group ? group.color : "#6b7280";
+            icon.textContent = ex.icon;
+        }
         it.appendChild(icon);
 
         const info = document.createElement("div");
@@ -720,6 +776,9 @@ async function saveWorkout(workout) {
         saveLocalArray(HISTORY_LOCAL, all.slice(0, 100));
         history = all;
         renderHistory();
+        // Pro lokální režim rovnou přečti statistiky z localStorage
+        exerciseStats = loadLocalStats();
+        renderExercisesList();
     }
 }
 
@@ -840,6 +899,388 @@ finishSaveTplEl.addEventListener("change", () => {
     finishTplNameEl.classList.toggle("hidden", !finishSaveTplEl.checked);
     if (finishSaveTplEl.checked) finishTplNameEl.focus();
 });
+
+// ===== Rendering: „Moje cviky" =====
+function renderExercisesList() {
+    exercisesListEl.innerHTML = "";
+    const ids = Object.keys(exerciseStats).filter((id) => EXERCISE_BY_ID[id]);
+    if (ids.length === 0) {
+        exercisesEmptyEl.classList.remove("hidden");
+        return;
+    }
+    exercisesEmptyEl.classList.add("hidden");
+    // Seřaď podle lastUsedAt desc
+    ids.sort((a, b) => (exerciseStats[b].lastUsedAt || 0) - (exerciseStats[a].lastUsedAt || 0));
+
+    for (const id of ids) {
+        const ex = EXERCISE_BY_ID[id];
+        const group = GROUP_BY_ID[ex.group];
+        const s = exerciseStats[id] || {};
+
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "exercise-card";
+        card.addEventListener("click", () => openDetail(id));
+
+        const thumb = document.createElement("div");
+        thumb.className = "exercise-card-thumb";
+        if (s.customImage) {
+            const img = document.createElement("img");
+            img.src = s.customImage;
+            img.alt = ex.name;
+            thumb.appendChild(img);
+        } else {
+            thumb.style.background = group ? group.color : "#6b7280";
+            thumb.textContent = ex.icon;
+        }
+        card.appendChild(thumb);
+
+        const body = document.createElement("div");
+        body.className = "exercise-card-body";
+        const nm = document.createElement("strong");
+        nm.textContent = ex.name;
+        body.appendChild(nm);
+
+        const stats = document.createElement("span");
+        stats.className = "exercise-card-stats";
+        stats.textContent =
+            (s.sessions || 0) + "× · max " + fmtKg(s.bestWeight || 0);
+        body.appendChild(stats);
+
+        card.appendChild(body);
+        exercisesListEl.appendChild(card);
+    }
+}
+
+// ===== Detail cviku =====
+function openDetail(exerciseId) {
+    detailExerciseId = exerciseId;
+    renderDetail();
+    showView("detail");
+}
+
+function renderDetail() {
+    const ex = EXERCISE_BY_ID[detailExerciseId];
+    if (!ex) return;
+    const group = GROUP_BY_ID[ex.group];
+    const s = exerciseStats[detailExerciseId] || {};
+
+    detailNameEl.textContent = ex.name;
+    detailGroupEl.textContent = group ? group.label : "";
+    detailGroupEl.style.color = group ? group.color : "";
+
+    // Obrázek
+    detailImageEl.innerHTML = "";
+    if (s.customImage) {
+        const img = document.createElement("img");
+        img.src = s.customImage;
+        img.alt = ex.name;
+        detailImageEl.appendChild(img);
+        btnImageRemove.classList.remove("hidden");
+    } else {
+        detailImageEl.style.background = group ? group.color : "#6b7280";
+        const span = document.createElement("span");
+        span.textContent = ex.icon;
+        detailImageEl.appendChild(span);
+        btnImageRemove.classList.add("hidden");
+    }
+
+    // Statistiky
+    detailStatsEl.innerHTML = "";
+    const statsData = [
+        { label: "Tréninků", value: (s.sessions || 0) + "×" },
+        { label: "Max. váha", value: fmtKg(s.bestWeight || 0) },
+        { label: "Celkový objem", value: fmtKg(s.totalVolume || 0) },
+        { label: "Celkem setů", value: (s.totalSets || 0) + "×" },
+    ];
+    for (const st of statsData) {
+        const cell = document.createElement("div");
+        cell.className = "detail-stat";
+        const v = document.createElement("strong");
+        v.textContent = st.value;
+        const l = document.createElement("span");
+        l.textContent = st.label;
+        cell.appendChild(v);
+        cell.appendChild(l);
+        detailStatsEl.appendChild(cell);
+    }
+
+    // Graf + sessions
+    renderProgressChart(detailExerciseId);
+    renderDetailSessions(detailExerciseId);
+}
+
+function collectExerciseHistory(exerciseId) {
+    // Vrátí pole bodů {date, maxWeight, volume, sets} setříděné chronologicky.
+    const points = [];
+    for (const w of history) {
+        const ex = (w.exercises || []).find((e) => e.exerciseId === exerciseId);
+        if (!ex || !ex.sets || ex.sets.length === 0) continue;
+        let maxW = 0;
+        let vol = 0;
+        for (const s of ex.sets) {
+            maxW = Math.max(maxW, s.weight || 0);
+            vol += (s.weight || 0) * (s.reps || 0);
+        }
+        points.push({
+            date: w.finishedAt || w.startedAt || 0,
+            maxWeight: maxW,
+            volume: Math.round(vol),
+            sets: ex.sets.length,
+            workoutName: w.name || "Trénink",
+        });
+    }
+    points.sort((a, b) => a.date - b.date);
+    return points;
+}
+
+function renderProgressChart(exerciseId) {
+    const points = collectExerciseHistory(exerciseId);
+    detailChartEl.innerHTML = "";
+
+    if (points.length < 2) {
+        detailChartEmptyEl.classList.remove("hidden");
+        detailChartEl.classList.add("hidden");
+        return;
+    }
+    detailChartEmptyEl.classList.add("hidden");
+    detailChartEl.classList.remove("hidden");
+
+    const W = 600;
+    const H = 220;
+    const PAD_L = 40;
+    const PAD_R = 12;
+    const PAD_T = 14;
+    const PAD_B = 28;
+    const innerW = W - PAD_L - PAD_R;
+    const innerH = H - PAD_T - PAD_B;
+
+    const weights = points.map((p) => p.maxWeight);
+    const minY = 0;
+    const maxY = Math.max(...weights, 1);
+    const yScale = (v) => PAD_T + innerH - ((v - minY) / (maxY - minY || 1)) * innerH;
+    const xScale = (i) => PAD_L + (points.length === 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+
+    const svgNS = "http://www.w3.org/2000/svg";
+
+    // Mřížka Y — 4 čáry
+    const gridCount = 4;
+    for (let i = 0; i <= gridCount; i++) {
+        const y = PAD_T + (innerH / gridCount) * i;
+        const line = document.createElementNS(svgNS, "line");
+        line.setAttribute("x1", PAD_L);
+        line.setAttribute("x2", W - PAD_R);
+        line.setAttribute("y1", y);
+        line.setAttribute("y2", y);
+        line.setAttribute("class", "chart-grid");
+        detailChartEl.appendChild(line);
+
+        const value = maxY - ((maxY - minY) / gridCount) * i;
+        const label = document.createElementNS(svgNS, "text");
+        label.setAttribute("x", PAD_L - 6);
+        label.setAttribute("y", y + 4);
+        label.setAttribute("class", "chart-axis");
+        label.setAttribute("text-anchor", "end");
+        label.textContent = Math.round(value);
+        detailChartEl.appendChild(label);
+    }
+
+    // Vyplněná oblast pod křivkou
+    const areaPts = points.map((p, i) => xScale(i) + "," + yScale(p.maxWeight));
+    const area = document.createElementNS(svgNS, "polygon");
+    area.setAttribute("class", "chart-area");
+    area.setAttribute(
+        "points",
+        PAD_L + "," + (PAD_T + innerH) + " " + areaPts.join(" ") + " " +
+        (W - PAD_R) + "," + (PAD_T + innerH)
+    );
+    detailChartEl.appendChild(area);
+
+    // Spojovací čára
+    const line = document.createElementNS(svgNS, "polyline");
+    line.setAttribute("class", "chart-line");
+    line.setAttribute("points", areaPts.join(" "));
+    detailChartEl.appendChild(line);
+
+    // Body + tooltipy (title)
+    points.forEach((p, i) => {
+        const c = document.createElementNS(svgNS, "circle");
+        c.setAttribute("cx", xScale(i));
+        c.setAttribute("cy", yScale(p.maxWeight));
+        c.setAttribute("r", 4);
+        c.setAttribute("class", "chart-point");
+        const d = new Date(p.date);
+        const dateStr = d.getDate() + ". " + (d.getMonth() + 1) + ".";
+        const title = document.createElementNS(svgNS, "title");
+        title.textContent = dateStr + " — " + fmtKg(p.maxWeight);
+        c.appendChild(title);
+        detailChartEl.appendChild(c);
+    });
+
+    // Osy X — první a poslední datum
+    const first = new Date(points[0].date);
+    const last = new Date(points[points.length - 1].date);
+    const fmtAxisDate = (d) => d.getDate() + ". " + (d.getMonth() + 1) + ".";
+    const xLabelFirst = document.createElementNS(svgNS, "text");
+    xLabelFirst.setAttribute("x", xScale(0));
+    xLabelFirst.setAttribute("y", H - 8);
+    xLabelFirst.setAttribute("class", "chart-axis");
+    xLabelFirst.setAttribute("text-anchor", "start");
+    xLabelFirst.textContent = fmtAxisDate(first);
+    detailChartEl.appendChild(xLabelFirst);
+
+    const xLabelLast = document.createElementNS(svgNS, "text");
+    xLabelLast.setAttribute("x", xScale(points.length - 1));
+    xLabelLast.setAttribute("y", H - 8);
+    xLabelLast.setAttribute("class", "chart-axis");
+    xLabelLast.setAttribute("text-anchor", "end");
+    xLabelLast.textContent = fmtAxisDate(last);
+    detailChartEl.appendChild(xLabelLast);
+}
+
+function renderDetailSessions(exerciseId) {
+    const points = collectExerciseHistory(exerciseId).slice().reverse();
+    detailSessionsEl.innerHTML = "";
+    if (points.length === 0) {
+        const p = document.createElement("p");
+        p.className = "empty-state";
+        p.textContent = "Žádné záznamy.";
+        detailSessionsEl.appendChild(p);
+        return;
+    }
+    for (const p of points.slice(0, 10)) {
+        const row = document.createElement("div");
+        row.className = "detail-session-row";
+        const d = new Date(p.date);
+        row.innerHTML =
+            '<span>' + fmtDateTime(d.getTime()) + '</span>' +
+            '<span class="detail-session-metric">max ' + fmtKg(p.maxWeight) + '</span>' +
+            '<span class="detail-session-metric">' + p.sets + " setů · " + fmtKg(p.volume) + '</span>';
+        detailSessionsEl.appendChild(row);
+    }
+}
+
+// ===== Upload obrázku / GIFu =====
+function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function resizeImage(file, maxW, maxH) {
+    const dataUrl = await fileToDataUrl(file);
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            let w = img.naturalWidth;
+            let h = img.naturalHeight;
+            const ratio = Math.min(maxW / w, maxH / h, 1);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = () => reject(new Error("Obrázek nelze načíst"));
+        img.src = dataUrl;
+    });
+}
+
+async function handleImageUpload(file) {
+    if (!detailExerciseId || !file) return;
+    const MAX_SIZE = 1.5 * 1024 * 1024; // 1,5 MB surový soubor
+    if (file.size > MAX_SIZE) {
+        alert("Soubor je moc velký. Max 1,5 MB.");
+        return;
+    }
+
+    let dataUrl;
+    try {
+        if (file.type === "image/gif") {
+            dataUrl = await fileToDataUrl(file);
+        } else if (file.type.startsWith("image/")) {
+            dataUrl = await resizeImage(file, 640, 640);
+        } else {
+            alert("Nahraj prosím obrázek nebo GIF.");
+            return;
+        }
+    } catch (err) {
+        alert("Chyba při zpracování souboru: " + err.message);
+        return;
+    }
+
+    await saveCustomImage(detailExerciseId, dataUrl);
+}
+
+async function saveCustomImage(exerciseId, dataUrl) {
+    if (currentUser) {
+        const ref = doc(db, "users", currentUser.uid, "exerciseStats", exerciseId);
+        try {
+            const snap = await getDoc(ref);
+            const prev = snap.exists() ? snap.data() : { exerciseId };
+            await setDoc(ref, { ...prev, customImage: dataUrl });
+        } catch (err) {
+            alert("Chyba při ukládání obrázku: " + err.message);
+        }
+    } else {
+        const stats = loadLocalStats();
+        stats[exerciseId] = {
+            ...(stats[exerciseId] || { exerciseId }),
+            customImage: dataUrl,
+        };
+        saveLocalStats(stats);
+        exerciseStats = stats;
+        renderExercisesList();
+        renderDetail();
+    }
+}
+
+async function removeCustomImage() {
+    if (!detailExerciseId) return;
+    if (!confirm("Odstranit obrázek?")) return;
+    if (currentUser) {
+        const ref = doc(db, "users", currentUser.uid, "exerciseStats", detailExerciseId);
+        try {
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const data = snap.data();
+                delete data.customImage;
+                await setDoc(ref, data);
+            }
+        } catch (err) {
+            alert("Chyba: " + err.message);
+        }
+    } else {
+        const stats = loadLocalStats();
+        if (stats[detailExerciseId]) {
+            delete stats[detailExerciseId].customImage;
+            saveLocalStats(stats);
+        }
+        exerciseStats = stats;
+        renderExercisesList();
+        renderDetail();
+    }
+}
+
+// ===== Event handlery detailu =====
+btnDetailBack.addEventListener("click", () => {
+    detailExerciseId = null;
+    showView("home");
+});
+
+detailImageInput.addEventListener("change", () => {
+    const file = detailImageInput.files && detailImageInput.files[0];
+    if (file) handleImageUpload(file);
+    detailImageInput.value = "";
+});
+
+btnImageRemove.addEventListener("click", removeCustomImage);
 
 // Obnova rozpracovaného tréninku po refreshi
 activeWorkout = loadActive();

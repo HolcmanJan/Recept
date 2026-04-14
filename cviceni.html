@@ -28,6 +28,14 @@
             </div>
 
             <section class="workout-section">
+                <h3>Moje cviky</h3>
+                <div id="exercises-list" class="exercises-grid"></div>
+                <p id="exercises-empty" class="empty-state hidden">
+                    Dokud nezačneš trénovat, tady se nic nezobrazí.
+                </p>
+            </section>
+
+            <section class="workout-section">
                 <h3>Šablony</h3>
                 <div id="templates-list" class="templates-list"></div>
                 <p id="templates-empty" class="empty-state hidden">
@@ -41,6 +49,42 @@
                 <p id="history-empty" class="empty-state hidden">
                     Zatím jsi nedokončil žádný trénink.
                 </p>
+            </section>
+        </section>
+
+        <!-- Detail cviku -->
+        <section id="view-detail" class="workout-view hidden">
+            <button id="btn-detail-back" class="btn btn-secondary btn-sm detail-back">← Zpět</button>
+
+            <div class="detail-head">
+                <div id="detail-image" class="detail-image"></div>
+                <div class="detail-info">
+                    <h2 id="detail-name">Cvik</h2>
+                    <p id="detail-group" class="detail-group"></p>
+                </div>
+            </div>
+
+            <div class="detail-upload">
+                <label for="detail-image-input" class="btn btn-secondary btn-sm">📷 Nahrát obrázek / GIF</label>
+                <input type="file" id="detail-image-input" accept="image/*" class="hidden">
+                <button id="btn-image-remove" class="btn btn-secondary btn-sm hidden">Odstranit obrázek</button>
+            </div>
+
+            <div class="detail-stats" id="detail-stats"></div>
+
+            <section class="workout-section">
+                <h3>Progres — max. váha v tréninku</h3>
+                <div class="chart-wrap">
+                    <svg id="detail-chart" class="progress-chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+                </div>
+                <p id="detail-chart-empty" class="empty-state hidden">
+                    Ještě nejsou data pro graf. Odcvič cvik aspoň ve 2 trénincích.
+                </p>
+            </section>
+
+            <section class="workout-section">
+                <h3>Poslední tréninky</h3>
+                <div id="detail-sessions" class="detail-sessions"></div>
             </section>
         </section>
 
