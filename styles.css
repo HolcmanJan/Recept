@@ -389,58 +389,6 @@ h2 {
     text-decoration: underline;
 }
 
-.hamburger {
-    background: none;
-    border: none;
-    font-size: 1.6rem;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    color: var(--text);
-    border-radius: 6px;
-}
-
-.hamburger:hover {
-    background: var(--bg);
-}
-
-/* ============ Postranní menu ============ */
-.side-menu {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    width: 300px;
-    max-width: 85vw;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
-    transform: translateX(-100%);
-    transition: transform 0.22s ease;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-}
-
-.side-menu.open {
-    transform: translateX(0);
-}
-
-.side-menu-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.side-menu-header h2 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: var(--primary);
-}
-
 .close-btn {
     background: none;
     border: none;
@@ -455,114 +403,69 @@ h2 {
     color: var(--text);
 }
 
-.side-menu-nav {
+/* ============ Spodní navigace ============ */
+.bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    background: #fff;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+    padding: 0.35rem 0.25rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+}
+
+.bottom-nav-item {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border);
-}
-
-.side-menu-nav a,
-.side-menu-nav .menu-disabled {
-    display: block;
-    padding: 0.75rem 1.25rem;
-    color: var(--text);
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    padding: 0.45rem 0.2rem;
+    color: var(--muted);
     text-decoration: none;
-    font-size: 0.98rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border-radius: 10px;
+    transition: color 0.12s ease, background 0.12s ease;
+    min-width: 0;
 }
 
-.side-menu-nav a:hover {
+.bottom-nav-item:hover {
     background: var(--bg);
 }
 
-.side-menu-nav a.active {
-    background: var(--accent);
-    color: #92400e;
-    font-weight: 500;
+.bottom-nav-item.active {
+    color: var(--primary);
 }
 
-.side-menu-nav .menu-disabled {
-    color: var(--muted);
-    cursor: not-allowed;
+.bottom-nav-item.active .bottom-nav-icon {
+    transform: scale(1.08);
 }
 
-.side-menu-nav .menu-disabled em {
-    font-style: normal;
-    font-size: 0.8rem;
-    color: var(--muted);
-    margin-left: 0.25rem;
+.bottom-nav-icon {
+    font-size: 1.3rem;
+    line-height: 1;
+    transition: transform 0.12s ease;
 }
 
-.side-menu-section {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.side-menu-section h3 {
-    margin: 0 0 0.75rem;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-    font-weight: 600;
-}
-
-.side-menu-footer {
-    margin-top: auto;
-    border-bottom: none;
-}
-
-.side-menu-footer p {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--muted);
-}
-
-.menu-user-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-.menu-user-name {
-    margin: 0;
-    font-weight: 500;
-}
-
-.menu-user-email {
-    margin: 0;
-    font-size: 0.85rem;
-    color: var(--muted);
-    word-break: break-all;
-}
-
-.menu-status {
-    margin: 0.25rem 0 0.75rem;
-    font-size: 0.85rem;
-    color: #065f46;
-}
-
-.menu-hint {
-    margin: 0 0 0.75rem;
-    font-size: 0.88rem;
-    color: var(--muted);
-}
-
-.menu-auth-loading {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.9rem;
-}
-
-.hamburger-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 999;
-}
-
-body.menu-open {
+.bottom-nav-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Aby obsah stránky nebyl skrytý pod lištou */
+body.has-bottom-nav {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ============ Domovská stránka – dlaždice ============ */
@@ -639,13 +542,46 @@ body.menu-open {
     color: var(--primary);
 }
 
-/* ============ Samostatná sekce menu pro Nastavení ============ */
-.side-menu-nav-settings {
-    padding: 0.25rem 0 0.75rem;
+/* ============ Sekce Účet na stránce Nastavení ============ */
+.account-area {
+    padding: 0.75rem 1rem;
 }
 
-.side-menu-nav-settings a {
-    font-weight: 500;
+.account-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.account-name {
+    margin: 0;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.account-email {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    word-break: break-all;
+}
+
+.account-status {
+    margin: 0.25rem 0 0.75rem;
+    font-size: 0.85rem;
+    color: #065f46;
+}
+
+.account-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.88rem;
+    color: var(--muted);
+}
+
+.account-loading {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
 }
 
 /* ============ Stránka Nastavení ============ */

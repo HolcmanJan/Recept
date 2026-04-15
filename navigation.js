@@ -1,4 +1,4 @@
-// Sdílená logika pro hamburger menu, navigaci a auth UI (používá ji každá stránka).
+// Sdílená navigace: spodní lišta s rozcestníky + auth UI na stránce Nastavení.
 import {
     auth,
     onAuthStateChanged,
@@ -7,105 +7,79 @@ import {
 } from "./firebase-init.js";
 
 const NAV_ITEMS = [
-    { key: "home", label: "🏠 Domů", href: "index.html" },
-    { key: "recepty", label: "🍳 Recepty", href: "recepty.html" },
-    { key: "rozpocet", label: "💰 Rozpočet", href: "rozpocet.html" },
-    { key: "cviceni", label: "💪 Cvičení", href: "cviceni.html" },
-    { key: "hry", label: "🎮 Hry", note: "připravujeme" },
+    { key: "home", label: "Domů", icon: "🏠", href: "index.html" },
+    { key: "recepty", label: "Recepty", icon: "🍳", href: "recepty.html" },
+    { key: "rozpocet", label: "Rozpočet", icon: "💰", href: "rozpocet.html" },
+    { key: "cviceni", label: "Cvičení", icon: "💪", href: "cviceni.html" },
+    { key: "nastaveni", label: "Nastavení", icon: "⚙", href: "nastaveni.html" },
 ];
 
 // Jednotný vstupní bod pro inicializaci navigace na stránce.
 export function initNavigation(activePage, onUserChange) {
-    renderSideMenu(activePage);
-    initHamburger();
-    initMenuAuth(onUserChange);
+    renderBottomNav(activePage);
+    initAuth(onUserChange);
 }
 
-function renderSideMenu(activePage) {
-    const root = document.getElementById("side-menu-root");
-    if (!root) return;
+function renderBottomNav(activePage) {
+    // Odeber starý side-menu root (pokud z minulých verzí HTML zbyl)
+    const oldRoot = document.getElementById("side-menu-root");
+    if (oldRoot) oldRoot.remove();
 
-    const navHtml = NAV_ITEMS.map((item) => {
-        if (item.href) {
-            const cls = item.key === activePage ? ' class="active"' : "";
-            return `<a href="${item.href}"${cls}>${item.label}</a>`;
-        }
-        return `<span class="menu-disabled">${item.label} <em>(${item.note})</em></span>`;
-    }).join("");
+    // Schovej hamburger tlačítko z headeru (pokud ho HTML stránky ještě obsahuje)
+    const oldBtn = document.getElementById("hamburger-btn");
+    if (oldBtn) oldBtn.remove();
 
-    const isSettingsActive =
-        activePage === "nastaveni" || activePage === "zalozky";
-    const settingsCls = isSettingsActive ? ' class="active"' : "";
+    // Existující lišta (např. při opakovaném volání)
+    let nav = document.getElementById("bottom-nav");
+    if (nav) nav.remove();
 
-    root.innerHTML = `
-        <div id="hamburger-backdrop" class="hamburger-backdrop hidden"></div>
-        <aside id="side-menu" class="side-menu">
-            <div class="side-menu-header">
-                <h2>Menu</h2>
-                <button id="close-menu" class="close-btn" aria-label="Zavřít menu">×</button>
-            </div>
-            <nav class="side-menu-nav">
-                ${navHtml}
-            </nav>
-            <nav class="side-menu-nav side-menu-nav-settings">
-                <a href="nastaveni.html"${settingsCls}>⚙ Nastavení</a>
-            </nav>
-            <div class="side-menu-section">
-                <h3>Účet</h3>
-                <div id="menu-auth-area"></div>
-            </div>
-            <div class="side-menu-section side-menu-footer">
-                <h3>O aplikaci</h3>
-                <p>Moje aplikace v1.0</p>
-            </div>
-        </aside>
-    `;
-}
+    nav = document.createElement("nav");
+    nav.id = "bottom-nav";
+    nav.className = "bottom-nav";
+    nav.setAttribute("aria-label", "Hlavní navigace");
 
-function initHamburger() {
-    const btn = document.getElementById("hamburger-btn");
-    const menu = document.getElementById("side-menu");
-    const backdrop = document.getElementById("hamburger-backdrop");
-    const closeBtn = document.getElementById("close-menu");
-    if (!btn || !menu || !backdrop) return;
+    for (const item of NAV_ITEMS) {
+        const a = document.createElement("a");
+        a.href = item.href;
+        a.className = "bottom-nav-item";
+        if (item.key === activePage) a.classList.add("active");
 
-    function open() {
-        menu.classList.add("open");
-        backdrop.classList.remove("hidden");
-        document.body.classList.add("menu-open");
-    }
-    function close() {
-        menu.classList.remove("open");
-        backdrop.classList.add("hidden");
-        document.body.classList.remove("menu-open");
+        const icon = document.createElement("span");
+        icon.className = "bottom-nav-icon";
+        icon.textContent = item.icon;
+        a.appendChild(icon);
+
+        const lbl = document.createElement("span");
+        lbl.className = "bottom-nav-label";
+        lbl.textContent = item.label;
+        a.appendChild(lbl);
+
+        nav.appendChild(a);
     }
 
-    btn.addEventListener("click", open);
-    backdrop.addEventListener("click", close);
-    if (closeBtn) closeBtn.addEventListener("click", close);
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && menu.classList.contains("open")) close();
-    });
+    document.body.appendChild(nav);
+    document.body.classList.add("has-bottom-nav");
 }
 
-function initMenuAuth(onUserChange) {
-    renderMenuAuth(null, false);
+function initAuth(onUserChange) {
+    renderAuthArea(null, false);
     onAuthStateChanged(auth, (user) => {
-        renderMenuAuth(user, true);
+        renderAuthArea(user, true);
         if (typeof onUserChange === "function") {
             onUserChange(user);
         }
     });
 }
 
-function renderMenuAuth(user, authReady) {
-    const container = document.getElementById("menu-auth-area");
+// Renderuje stav účtu do #account-area (existuje pouze na stránce Nastavení).
+function renderAuthArea(user, authReady) {
+    const container = document.getElementById("account-area");
     if (!container) return;
     container.innerHTML = "";
 
     if (!authReady) {
         const p = document.createElement("p");
-        p.className = "menu-auth-loading";
+        p.className = "account-loading";
         p.textContent = "Načítání…";
         container.appendChild(p);
         return;
@@ -113,22 +87,22 @@ function renderMenuAuth(user, authReady) {
 
     if (user) {
         const info = document.createElement("div");
-        info.className = "menu-user-info";
+        info.className = "account-info";
 
         const name = document.createElement("p");
-        name.className = "menu-user-name";
+        name.className = "account-name";
         name.textContent = user.displayName || "Přihlášen";
         info.appendChild(name);
 
         if (user.email) {
             const email = document.createElement("p");
-            email.className = "menu-user-email";
+            email.className = "account-email";
             email.textContent = user.email;
             info.appendChild(email);
         }
 
         const status = document.createElement("p");
-        status.className = "menu-status";
+        status.className = "account-status";
         status.textContent = "☁ Data se synchronizují";
         info.appendChild(status);
 
@@ -141,7 +115,7 @@ function renderMenuAuth(user, authReady) {
         container.appendChild(info);
     } else {
         const p = document.createElement("p");
-        p.className = "menu-hint";
+        p.className = "account-hint";
         p.textContent =
             "Přihlaš se, aby se data synchronizovala mezi všemi tvými zařízeními.";
         container.appendChild(p);
