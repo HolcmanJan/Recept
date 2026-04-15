@@ -9,14 +9,9 @@
 <body>
     <header>
         <div class="container header-inner">
-            <div class="header-left">
-                <button id="hamburger-btn" class="hamburger" aria-label="Otevřít menu">☰</button>
-                <h1>Cvičení</h1>
-            </div>
+            <h1>Cvičení</h1>
         </div>
     </header>
-
-    <div id="side-menu-root"></div>
 
     <main class="container">
         <!-- Domovský pohled -->
@@ -28,7 +23,10 @@
             </div>
 
             <section class="workout-section">
-                <h3>Moje cviky</h3>
+                <div class="section-header">
+                    <h3>Moje cviky</h3>
+                    <button id="btn-open-catalog" class="btn btn-secondary btn-sm">📖 Katalog cviků</button>
+                </div>
                 <div id="exercises-list" class="exercises-grid"></div>
                 <p id="exercises-empty" class="empty-state hidden">
                     Dokud nezačneš trénovat, tady se nic nezobrazí.
@@ -88,6 +86,20 @@
             </section>
         </section>
 
+        <!-- Katalog cviků -->
+        <section id="view-catalog" class="workout-view hidden">
+            <button id="btn-catalog-back" class="btn btn-secondary btn-sm detail-back">← Zpět</button>
+
+            <div class="catalog-head">
+                <h2>Katalog cviků</h2>
+                <button id="btn-add-custom-exercise" class="btn btn-primary btn-sm">+ Nový cvik</button>
+            </div>
+
+            <input type="text" id="catalog-search" class="picker-search" placeholder="Hledat cvik…">
+
+            <div id="catalog-groups" class="catalog-groups"></div>
+        </section>
+
         <!-- Aktivní trénink -->
         <section id="view-active" class="workout-view hidden">
             <div class="workout-head">
@@ -126,6 +138,35 @@
                 <input type="text" id="picker-search" class="picker-search" placeholder="Hledat cvik…">
                 <div class="picker-filters" id="picker-filters"></div>
                 <div class="picker-list" id="picker-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vytvoření vlastního cviku -->
+    <div id="custom-exercise-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="custom-exercise-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-head">
+                <h3 id="custom-exercise-title">Nový cvik</h3>
+                <button id="custom-exercise-close" class="close-btn" aria-label="Zavřít">×</button>
+            </div>
+            <div class="modal-body">
+                <label class="form-field">
+                    <span>Název</span>
+                    <input type="text" id="custom-exercise-name" placeholder="Např. Thruster" maxlength="60">
+                </label>
+                <label class="form-field">
+                    <span>Svalová partie</span>
+                    <select id="custom-exercise-group"></select>
+                </label>
+                <label class="form-field">
+                    <span>Ikona (emoji)</span>
+                    <input type="text" id="custom-exercise-icon" placeholder="💪" maxlength="4">
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button id="custom-exercise-cancel" class="btn btn-secondary">Zrušit</button>
+                <button id="custom-exercise-save" class="btn btn-primary">Uložit cvik</button>
             </div>
         </div>
     </div>

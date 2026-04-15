@@ -87,33 +87,66 @@ const EXERCISES = [
     { id: "ab-wheel", name: "Kolečko na břicho", group: "core", icon: "☯️" },
 ];
 
-const EXERCISE_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
+// Vestavěné cviky zůstávají v EXERCISES; merge s custom se provede v rebuildExerciseIndex().
+const BUILTIN_EXERCISES = EXERCISES.slice();
+let EXERCISE_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 const GROUP_BY_ID = Object.fromEntries(GROUPS.map((g) => [g.id, g]));
+
+function rebuildExerciseIndex() {
+    // Přestavíme EXERCISES i EXERCISE_BY_ID tak, aby obsahovaly vestavěné + vlastní
+    EXERCISES.length = 0;
+    for (const e of BUILTIN_EXERCISES) EXERCISES.push(e);
+    for (const e of customExercises) EXERCISES.push(e);
+    EXERCISE_BY_ID = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
+}
 
 // ===== Lokální úložiště klíče =====
 const ACTIVE_KEY = "recept.workout.active";
 const TEMPLATES_LOCAL = "recept.workout.templates";
 const HISTORY_LOCAL = "recept.workout.history";
 const STATS_LOCAL = "recept.workout.stats";
+const CUSTOM_EX_LOCAL = "recept.workout.customExercises";
 
 // ===== Stav =====
 let currentUser = null;
 let unsubTemplates = null;
 let unsubHistory = null;
 let unsubStats = null;
+let unsubCustomEx = null;
 let templates = [];
 let history = [];
 let exerciseStats = {}; // { exerciseId: {sessions, totalVolume, bestWeight, totalSets, lastUsedAt, customImage} }
+let customExercises = []; // [{id, name, group, icon, custom:true}]
 let activeWorkout = null;
 let timerInterval = null;
 let pickerFilter = "all";
 let pickerSearch = "";
 let detailExerciseId = null;
+let detailReturnView = "home"; // kam se vrátit z detailu (home nebo catalog)
+let catalogSearch = "";
+let editingCustomExercise = null; // při editaci existujícího
 
 // ===== DOM =====
 const viewHome = document.getElementById("view-home");
 const viewActive = document.getElementById("view-active");
 const viewDetail = document.getElementById("view-detail");
+const viewCatalog = document.getElementById("view-catalog");
+
+const btnOpenCatalog = document.getElementById("btn-open-catalog");
+const btnCatalogBack = document.getElementById("btn-catalog-back");
+const btnAddCustomExercise = document.getElementById("btn-add-custom-exercise");
+const catalogSearchEl = document.getElementById("catalog-search");
+const catalogGroupsEl = document.getElementById("catalog-groups");
+
+const customExModal = document.getElementById("custom-exercise-modal");
+const customExBackdrop = document.getElementById("custom-exercise-backdrop");
+const customExClose = document.getElementById("custom-exercise-close");
+const customExCancel = document.getElementById("custom-exercise-cancel");
+const customExSave = document.getElementById("custom-exercise-save");
+const customExTitleEl = document.getElementById("custom-exercise-title");
+const customExNameEl = document.getElementById("custom-exercise-name");
+const customExGroupEl = document.getElementById("custom-exercise-group");
+const customExIconEl = document.getElementById("custom-exercise-icon");
 
 const exercisesListEl = document.getElementById("exercises-list");
 const exercisesEmptyEl = document.getElementById("exercises-empty");
@@ -255,11 +288,27 @@ function saveLocalStats(stats) {
     localStorage.setItem(STATS_LOCAL, JSON.stringify(stats));
 }
 
+// ===== Vlastní cviky =====
+function loadLocalCustomExercises() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_EX_LOCAL);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveLocalCustomExercises(arr) {
+    localStorage.setItem(CUSTOM_EX_LOCAL, JSON.stringify(arr));
+}
+
 // ===== Přepínání pohledů =====
 function showView(name) {
     viewHome.classList.toggle("hidden", name !== "home");
     viewActive.classList.toggle("hidden", name !== "active");
     viewDetail.classList.toggle("hidden", name !== "detail");
+    viewCatalog.classList.toggle("hidden", name !== "catalog");
     window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -270,8 +319,21 @@ initNavigation("cviceni", (user) => {
     if (unsubTemplates) { unsubTemplates(); unsubTemplates = null; }
     if (unsubHistory) { unsubHistory(); unsubHistory = null; }
     if (unsubStats) { unsubStats(); unsubStats = null; }
+    if (unsubCustomEx) { unsubCustomEx(); unsubCustomEx = null; }
 
     if (user) {
+        // Vlastní cviky
+        unsubCustomEx = onSnapshot(
+            collection(db, "users", user.uid, "customExercises"),
+            (snap) => {
+                customExercises = snap.docs.map((d) => ({ id: d.id, custom: true, ...d.data() }));
+                customExercises.sort((a, b) => (a.name || "").localeCompare(b.name || "", "cs"));
+                rebuildExerciseIndex();
+                renderExercisesList();
+                if (!viewCatalog.classList.contains("hidden")) renderCatalog();
+            },
+            (err) => console.error("Custom cviky:", err)
+        );
         // Statistiky cviků
         unsubStats = onSnapshot(
             collection(db, "users", user.uid, "exerciseStats"),
@@ -314,6 +376,8 @@ initNavigation("cviceni", (user) => {
         templates = loadLocalArray(TEMPLATES_LOCAL);
         history = loadLocalArray(HISTORY_LOCAL);
         exerciseStats = loadLocalStats();
+        customExercises = loadLocalCustomExercises();
+        rebuildExerciseIndex();
         renderTemplates();
         renderHistory();
         renderExercisesList();
@@ -953,8 +1017,9 @@ function renderExercisesList() {
 }
 
 // ===== Detail cviku =====
-function openDetail(exerciseId) {
+function openDetail(exerciseId, from) {
     detailExerciseId = exerciseId;
+    detailReturnView = from === "catalog" ? "catalog" : "home";
     renderDetail();
     showView("detail");
 }
@@ -1280,10 +1345,248 @@ async function removeCustomImage() {
     }
 }
 
+// ===== Katalog cviků =====
+function openCatalog() {
+    catalogSearch = "";
+    catalogSearchEl.value = "";
+    renderCatalog();
+    showView("catalog");
+}
+
+function renderCatalog() {
+    catalogGroupsEl.innerHTML = "";
+    const q = catalogSearch.trim().toLowerCase();
+
+    for (const group of GROUPS) {
+        const items = EXERCISES.filter(
+            (e) => e.group === group.id && (!q || e.name.toLowerCase().includes(q))
+        );
+        if (items.length === 0) continue;
+
+        const section = document.createElement("section");
+        section.className = "catalog-group";
+
+        const heading = document.createElement("h3");
+        heading.className = "catalog-group-title";
+        heading.innerHTML =
+            '<span class="catalog-group-dot" style="background:' + group.color + '"></span>' +
+            group.label + ' <em>(' + items.length + ')</em>';
+        section.appendChild(heading);
+
+        const list = document.createElement("div");
+        list.className = "catalog-list";
+
+        items.sort((a, b) => a.name.localeCompare(b.name, "cs"));
+        for (const ex of items) {
+            list.appendChild(createCatalogItem(ex));
+        }
+        section.appendChild(list);
+
+        catalogGroupsEl.appendChild(section);
+    }
+
+    if (catalogGroupsEl.children.length === 0) {
+        const p = document.createElement("p");
+        p.className = "empty-state";
+        p.textContent = "Žádný cvik neodpovídá.";
+        catalogGroupsEl.appendChild(p);
+    }
+}
+
+function createCatalogItem(ex) {
+    const group = GROUP_BY_ID[ex.group];
+    const s = exerciseStats[ex.id] || {};
+
+    const row = document.createElement("div");
+    row.className = "catalog-item";
+    if (ex.custom) row.classList.add("catalog-item-custom");
+
+    // Klikabilní hlavní oblast → otevře detail
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "catalog-item-main";
+    btn.addEventListener("click", () => openDetail(ex.id, "catalog"));
+
+    const icon = document.createElement("div");
+    icon.className = "exercise-icon";
+    if (s.customImage) {
+        const img = document.createElement("img");
+        img.src = s.customImage;
+        img.alt = ex.name;
+        icon.appendChild(img);
+        icon.classList.add("exercise-icon-img");
+    } else {
+        icon.style.background = group ? group.color : "#6b7280";
+        icon.textContent = ex.icon || "💪";
+    }
+    btn.appendChild(icon);
+
+    const info = document.createElement("div");
+    info.className = "catalog-item-info";
+    const nm = document.createElement("strong");
+    nm.textContent = ex.name;
+    info.appendChild(nm);
+    const sub = document.createElement("span");
+    if (ex.custom) {
+        sub.textContent = "Vlastní · " + (s.sessions ? s.sessions + "×" : "neodcvičeno");
+    } else {
+        sub.textContent = s.sessions ? (s.sessions + "× · max " + fmtKg(s.bestWeight || 0)) : "Neodcvičeno";
+    }
+    info.appendChild(sub);
+    btn.appendChild(info);
+
+    row.appendChild(btn);
+
+    // Pouze u vlastních cviků: upravit / smazat
+    if (ex.custom) {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn-icon";
+        editBtn.setAttribute("aria-label", "Upravit cvik");
+        editBtn.title = "Upravit";
+        editBtn.textContent = "✎";
+        editBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openCustomExerciseModal(ex);
+        });
+        row.appendChild(editBtn);
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "btn-icon btn-icon-danger";
+        delBtn.setAttribute("aria-label", "Smazat cvik");
+        delBtn.title = "Smazat";
+        delBtn.textContent = "×";
+        delBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            deleteCustomExercise(ex);
+        });
+        row.appendChild(delBtn);
+    }
+
+    return row;
+}
+
+// ===== Vlastní cvik — modal / CRUD =====
+function openCustomExerciseModal(existing) {
+    editingCustomExercise = existing || null;
+    customExTitleEl.textContent = existing ? "Upravit cvik" : "Nový cvik";
+
+    // Naplň select partiemi
+    customExGroupEl.innerHTML = "";
+    for (const g of GROUPS) {
+        const opt = document.createElement("option");
+        opt.value = g.id;
+        opt.textContent = g.label;
+        customExGroupEl.appendChild(opt);
+    }
+
+    customExNameEl.value = existing ? (existing.name || "") : "";
+    customExGroupEl.value = existing ? (existing.group || GROUPS[0].id) : GROUPS[0].id;
+    customExIconEl.value = existing ? (existing.icon || "") : "";
+
+    customExModal.classList.remove("hidden");
+    setTimeout(() => customExNameEl.focus(), 80);
+}
+
+function closeCustomExerciseModal() {
+    customExModal.classList.add("hidden");
+    editingCustomExercise = null;
+}
+
+async function saveCustomExerciseFromForm() {
+    const name = customExNameEl.value.trim();
+    const group = customExGroupEl.value;
+    const icon = (customExIconEl.value || "").trim() || "💪";
+
+    if (!name) {
+        alert("Zadej název cviku.");
+        return;
+    }
+    if (!GROUP_BY_ID[group]) {
+        alert("Neplatná partie.");
+        return;
+    }
+
+    const id = editingCustomExercise ? editingCustomExercise.id : ("custom-" + generateId());
+    const data = { name, group, icon, custom: true };
+
+    try {
+        if (currentUser) {
+            const ref = doc(db, "users", currentUser.uid, "customExercises", id);
+            await setDoc(ref, { name, group, icon });
+        } else {
+            const arr = loadLocalCustomExercises();
+            const idx = arr.findIndex((e) => e.id === id);
+            const entry = { id, ...data };
+            if (idx >= 0) arr[idx] = entry;
+            else arr.push(entry);
+            arr.sort((a, b) => (a.name || "").localeCompare(b.name || "", "cs"));
+            saveLocalCustomExercises(arr);
+            customExercises = arr;
+            rebuildExerciseIndex();
+            renderExercisesList();
+            renderCatalog();
+        }
+    } catch (err) {
+        alert("Chyba při ukládání: " + err.message);
+        return;
+    }
+
+    closeCustomExerciseModal();
+}
+
+async function deleteCustomExercise(ex) {
+    if (!confirm('Smazat cvik „' + ex.name + '"?\n\nStatistiky a historie zůstanou zachovány.')) return;
+
+    try {
+        if (currentUser) {
+            await deleteDoc(doc(db, "users", currentUser.uid, "customExercises", ex.id));
+        } else {
+            const arr = loadLocalCustomExercises().filter((e) => e.id !== ex.id);
+            saveLocalCustomExercises(arr);
+            customExercises = arr;
+            rebuildExerciseIndex();
+            renderExercisesList();
+            renderCatalog();
+        }
+    } catch (err) {
+        alert("Chyba při mazání: " + err.message);
+    }
+}
+
+// ===== Event handlery katalogu =====
+btnOpenCatalog.addEventListener("click", openCatalog);
+btnCatalogBack.addEventListener("click", () => showView("home"));
+btnAddCustomExercise.addEventListener("click", () => openCustomExerciseModal(null));
+catalogSearchEl.addEventListener("input", () => {
+    catalogSearch = catalogSearchEl.value;
+    renderCatalog();
+});
+
+// Event handlery modálu vlastního cviku
+customExClose.addEventListener("click", closeCustomExerciseModal);
+customExBackdrop.addEventListener("click", closeCustomExerciseModal);
+customExCancel.addEventListener("click", closeCustomExerciseModal);
+customExSave.addEventListener("click", saveCustomExerciseFromForm);
+customExNameEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        saveCustomExerciseFromForm();
+    }
+});
+
 // ===== Event handlery detailu =====
 btnDetailBack.addEventListener("click", () => {
+    const back = detailReturnView;
     detailExerciseId = null;
-    showView("home");
+    detailReturnView = "home";
+    if (back === "catalog") {
+        renderCatalog();
+        showView("catalog");
+    } else {
+        showView("home");
+    }
 });
 
 detailImageInput.addEventListener("change", () => {
