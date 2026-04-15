@@ -1073,6 +1073,17 @@ body.has-bottom-nav {
     background: linear-gradient(135deg, #fde68a 0%, #fb923c 100%);
 }
 
+.bookmark-featured-favicon {
+    background: #f3f4f6;
+}
+
+.bookmark-featured-favicon img {
+    width: 48%;
+    height: 48%;
+    object-fit: contain;
+    margin: auto;
+}
+
 .bookmarks-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1141,6 +1152,17 @@ body.has-bottom-nav {
 .bookmark-image-fallback {
     background: linear-gradient(135deg, #fde68a 0%, #fb923c 100%);
     color: #7c2d12;
+}
+
+.bookmark-image-favicon {
+    background: #f3f4f6;
+}
+
+.bookmark-image-favicon img {
+    width: 60%;
+    height: 60%;
+    object-fit: contain;
+    margin: auto;
 }
 
 .bookmark-body {
