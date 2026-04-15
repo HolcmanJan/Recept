@@ -109,12 +109,56 @@ function redditJsonUrl(url) {
     return base + "?" + params.toString();
 }
 
+async function fetchRedditJson(jsonUrl) {
+    // 1) Zkus přímo
+    try {
+        const res = await fetch(jsonUrl);
+        if (res.ok) {
+            const text = await res.text();
+            const trimmed = text.trim();
+            // Reddit vrací 200 s HTML challenge, když to vyhodnotí jako bota
+            if (!trimmed.startsWith("<")) {
+                return JSON.parse(trimmed);
+            }
+            console.warn("Reddit vrátil HTML (blokování), zkouším proxy");
+        } else {
+            console.warn("Reddit přímo: HTTP " + res.status);
+        }
+    } catch (err) {
+        console.warn("Přímé volání Redditu selhalo:", err.message || err);
+    }
+
+    // 2) Fallback přes veřejnou CORS proxy
+    const proxies = [
+        "https://corsproxy.io/?url=" + encodeURIComponent(jsonUrl),
+        "https://api.allorigins.win/raw?url=" + encodeURIComponent(jsonUrl),
+    ];
+    let lastErr;
+    for (const proxyUrl of proxies) {
+        try {
+            const res = await fetch(proxyUrl);
+            if (!res.ok) {
+                lastErr = new Error("Proxy HTTP " + res.status);
+                continue;
+            }
+            const text = await res.text();
+            const trimmed = text.trim();
+            if (trimmed.startsWith("<")) {
+                lastErr = new Error("Proxy vrátila HTML");
+                continue;
+            }
+            return JSON.parse(trimmed);
+        } catch (err) {
+            lastErr = err;
+        }
+    }
+    throw lastErr || new Error("Všechny zdroje selhaly");
+}
+
 async function fetchRedditPosts(url) {
     const jsonUrl = redditJsonUrl(url);
-    if (!jsonUrl) return [];
-    const res = await fetch(jsonUrl, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error("Reddit HTTP " + res.status);
-    const data = await res.json();
+    if (!jsonUrl) throw new Error("Neplatná Reddit URL");
+    const data = await fetchRedditJson(jsonUrl);
     // Endpoint příspěvku vrací pole [postListing, commentsListing]; subreddit vrací jen listing.
     let listing;
     if (Array.isArray(data)) {
@@ -456,8 +500,9 @@ async function renderRedditFeed(filtered) {
             }
             skeleton.replaceWith(frag);
         } catch (err) {
-            console.warn("Reddit fetch error:", err);
-            renderRedditError(skeleton, bookmark, "Nelze načíst příspěvek.");
+            console.error("Reddit fetch error pro", bookmark.url, err);
+            const detail = err && err.message ? " (" + err.message + ")" : "";
+            renderRedditError(skeleton, bookmark, "Nelze načíst příspěvek" + detail + ".");
         }
     }));
 }
