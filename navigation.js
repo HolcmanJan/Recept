@@ -17,72 +17,96 @@ const NAV_ITEMS = [
 // Jednotný vstupní bod pro inicializaci navigace na stránce.
 export function initNavigation(activePage, onUserChange) {
     renderBottomNav(activePage);
-    ensureHeaderAvatar(activePage);
+    ensureHeaderAvatar();
     initAuth(onUserChange);
 }
 
-// ----- Avatar v horní liště -----
-function ensureHeaderAvatar(activePage) {
+// ----- Avatar v horní liště + popover -----
+let currentUser = null;
+let popoverOpen = false;
+
+function ensureHeaderAvatar() {
     const headerInner = document.querySelector("header .header-inner");
     if (!headerInner) return;
-    if (headerInner.querySelector(".user-avatar")) return;
+    if (document.getElementById("user-avatar")) return;
 
-    const a = document.createElement("a");
-    a.id = "user-avatar";
-    a.className = "user-avatar user-avatar-loading";
-    a.href = "nastaveni.html";
-    a.setAttribute("aria-label", "Účet");
-    a.title = "Účet";
-
-    // Na stránce Nastavení nedává smysl navigovat jinam
-    if (activePage === "nastaveni") {
-        a.setAttribute("aria-current", "page");
-    }
-
-    // Výchozí placeholder (siluety)
-    a.innerHTML = '<span class="user-avatar-placeholder">👤</span>';
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "user-avatar";
+    btn.className = "user-avatar user-avatar-loading";
+    btn.setAttribute("aria-label", "Účet");
+    btn.setAttribute("aria-haspopup", "true");
+    btn.setAttribute("aria-expanded", "false");
+    btn.title = "Účet";
+    btn.innerHTML = '<span class="user-avatar-placeholder">👤</span>';
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePopover();
+    });
 
     // Přidej do pravé části hlavičky (vedle .header-actions pokud existuje)
     const actions = headerInner.querySelector(".header-actions");
     if (actions) {
-        actions.appendChild(a);
+        actions.appendChild(btn);
     } else {
-        headerInner.appendChild(a);
+        headerInner.appendChild(btn);
     }
+
+    // Popover vytvoř jednou
+    if (!document.getElementById("user-popover")) {
+        const pop = document.createElement("div");
+        pop.id = "user-popover";
+        pop.className = "user-popover hidden";
+        pop.setAttribute("role", "dialog");
+        pop.addEventListener("click", (e) => e.stopPropagation());
+        document.body.appendChild(pop);
+    }
+
+    // Globální zavření kliknutím mimo / Escapem
+    document.addEventListener("click", () => {
+        if (popoverOpen) closePopover();
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && popoverOpen) closePopover();
+    });
 }
 
 function updateHeaderAvatar(user) {
-    const a = document.getElementById("user-avatar");
-    if (!a) return;
-    a.classList.remove("user-avatar-loading");
-    a.innerHTML = "";
+    currentUser = user;
+
+    const btn = document.getElementById("user-avatar");
+    if (!btn) return;
+    btn.classList.remove("user-avatar-loading");
+    btn.innerHTML = "";
 
     if (!user) {
-        a.classList.remove("is-signed-in");
+        btn.classList.remove("is-signed-in");
         const span = document.createElement("span");
         span.className = "user-avatar-placeholder";
         span.textContent = "👤";
-        a.appendChild(span);
-        a.title = "Přihlásit se";
-        return;
-    }
-
-    a.classList.add("is-signed-in");
-    a.title = user.displayName || user.email || "Účet";
-
-    if (user.photoURL) {
-        const img = document.createElement("img");
-        img.src = user.photoURL;
-        img.alt = user.displayName || "Účet";
-        img.referrerPolicy = "no-referrer";
-        img.addEventListener("error", () => {
-            img.remove();
-            a.appendChild(buildInitialSpan(user));
-        });
-        a.appendChild(img);
+        btn.appendChild(span);
+        btn.title = "Přihlásit se";
     } else {
-        a.appendChild(buildInitialSpan(user));
+        btn.classList.add("is-signed-in");
+        btn.title = user.displayName || user.email || "Účet";
+
+        if (user.photoURL) {
+            const img = document.createElement("img");
+            img.src = user.photoURL;
+            img.alt = user.displayName || "Účet";
+            img.referrerPolicy = "no-referrer";
+            img.addEventListener("error", () => {
+                img.remove();
+                btn.appendChild(buildInitialSpan(user));
+            });
+            btn.appendChild(img);
+        } else {
+            btn.appendChild(buildInitialSpan(user));
+        }
     }
+
+    // Pokud je popover otevřený, přegeneruj obsah
+    if (popoverOpen) renderPopover();
 }
 
 function buildInitialSpan(user) {
@@ -91,6 +115,100 @@ function buildInitialSpan(user) {
     const src = user.displayName || user.email || "?";
     span.textContent = src.trim().charAt(0).toUpperCase();
     return span;
+}
+
+function togglePopover() {
+    if (popoverOpen) closePopover();
+    else openPopover();
+}
+
+function openPopover() {
+    const pop = document.getElementById("user-popover");
+    const btn = document.getElementById("user-avatar");
+    if (!pop || !btn) return;
+    renderPopover();
+    pop.classList.remove("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    popoverOpen = true;
+}
+
+function closePopover() {
+    const pop = document.getElementById("user-popover");
+    const btn = document.getElementById("user-avatar");
+    if (pop) pop.classList.add("hidden");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+    popoverOpen = false;
+}
+
+function renderPopover() {
+    const pop = document.getElementById("user-popover");
+    if (!pop) return;
+    pop.innerHTML = "";
+
+    if (currentUser) {
+        const head = document.createElement("div");
+        head.className = "user-popover-head";
+
+        const big = document.createElement("div");
+        big.className = "user-popover-avatar";
+        if (currentUser.photoURL) {
+            const img = document.createElement("img");
+            img.src = currentUser.photoURL;
+            img.alt = "";
+            img.referrerPolicy = "no-referrer";
+            img.addEventListener("error", () => {
+                img.remove();
+                big.appendChild(buildInitialSpan(currentUser));
+            });
+            big.appendChild(img);
+        } else {
+            big.appendChild(buildInitialSpan(currentUser));
+        }
+        head.appendChild(big);
+
+        const info = document.createElement("div");
+        info.className = "user-popover-info";
+        const name = document.createElement("strong");
+        name.textContent = currentUser.displayName || "Přihlášen";
+        info.appendChild(name);
+        if (currentUser.email) {
+            const em = document.createElement("span");
+            em.textContent = currentUser.email;
+            info.appendChild(em);
+        }
+        head.appendChild(info);
+        pop.appendChild(head);
+
+        const status = document.createElement("p");
+        status.className = "user-popover-status";
+        status.textContent = "☁ Data se synchronizují";
+        pop.appendChild(status);
+
+        const logout = document.createElement("button");
+        logout.type = "button";
+        logout.className = "btn btn-secondary btn-sm user-popover-btn";
+        logout.textContent = "Odhlásit";
+        logout.addEventListener("click", () => {
+            closePopover();
+            signOutUser();
+        });
+        pop.appendChild(logout);
+    } else {
+        const hint = document.createElement("p");
+        hint.className = "user-popover-hint";
+        hint.textContent = "Přihlaš se, aby se data synchronizovala mezi zařízeními.";
+        pop.appendChild(hint);
+
+        const login = document.createElement("button");
+        login.type = "button";
+        login.className = "btn btn-primary btn-sm user-popover-btn";
+        login.textContent = "Přihlásit se Googlem";
+        login.addEventListener("click", () => {
+            closePopover();
+            signInWithGoogle();
+        });
+        pop.appendChild(login);
+    }
 }
 
 function renderBottomNav(activePage) {
