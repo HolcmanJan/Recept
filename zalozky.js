@@ -1058,6 +1058,11 @@ function isImageLoadable(url) {
     });
 }
 
+// Staré náhledy vygenerované jako screenshot přes thum.io — chceme je přegenerovat
+function isLegacyScreenshotUrl(url) {
+    return typeof url === "string" && /image\.thum\.io\//i.test(url);
+}
+
 async function fixBrokenPreviews() {
     const filtered = filteredBookmarks();
     if (filtered.length === 0) {
@@ -1079,17 +1084,21 @@ async function fixBrokenPreviews() {
                 "info"
             );
 
-            const works = await isImageLoadable(bookmark.image);
+            // Staré screenshoty (thum.io) vždy přegenerovat, nekontrolovat jestli se načítají
+            const legacy = isLegacyScreenshotUrl(bookmark.image);
+            const works = !legacy && (await isImageLoadable(bookmark.image));
             if (works) continue;
 
             try {
                 const preview = await fetchPreview(bookmark.url);
-                if (preview.image && preview.image !== bookmark.image) {
+                // U legacy screenshotů akceptuj i prázdný výsledek (raději nic než thum.io);
+                // jinak přepiš jen když se změnil obrázek
+                if (legacy || (preview.image && preview.image !== bookmark.image)) {
                     await updateBookmark({
                         ...bookmark,
                         title: preview.title || bookmark.title,
                         description: preview.description || bookmark.description,
-                        image: preview.image,
+                        image: preview.image || "",
                         domain: preview.domain || bookmark.domain,
                     });
                     fixed++;
