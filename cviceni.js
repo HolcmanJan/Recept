@@ -1172,6 +1172,7 @@ function fileToDataUrl(file) {
 
 async function resizeImage(file, maxW, maxH) {
     const dataUrl = await fileToDataUrl(file);
+    const isPng = file.type === "image/png";
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
@@ -1184,8 +1185,19 @@ async function resizeImage(file, maxW, maxH) {
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL("image/jpeg", 0.82));
+            if (isPng) {
+                // PNG: zachovej průhlednost — žádné vyplnění pozadí
+                ctx.clearRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/png"));
+            } else {
+                // JPEG/WebP: nepodporuje alfu, transparent pixely by byly černé.
+                // Proto napřed vyplníme bílou.
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, h);
+                resolve(canvas.toDataURL("image/jpeg", 0.82));
+            }
         };
         img.onerror = () => reject(new Error("Obrázek nelze načíst"));
         img.src = dataUrl;
