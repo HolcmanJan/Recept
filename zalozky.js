@@ -14,6 +14,11 @@ const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const FEATURED_COUNT = 6;
 const PREVIEW_API = "https://api.microlink.io/?url=";
+const SCREENSHOT_API = "https://image.thum.io/get/width/800/noanimate/";
+const PROXY_ENDPOINTS = [
+    "https://corsproxy.io/?url=",
+    "https://api.allorigins.win/raw?url=",
+];
 const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
 const TAB_2_PASSWORD = "abc129";
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
@@ -323,33 +328,149 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
+// Řetěz: microlink → og:image z HTML (přes CORS proxy) → screenshot (thum.io)
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
 
+    let title = "";
+    let description = "";
+    let image = "";
+    let domain = hostname;
+
+    // 1) microlink.io — nejlepší metadata, ale denní limit
     try {
         const res = await fetch(PREVIEW_API + encodeURIComponent(url));
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const json = await res.json();
-        if (json.status !== "success" || !json.data) {
-            throw new Error("API odpověď neúspěšná");
+        if (res.ok) {
+            const json = await res.json();
+            if (json.status === "success" && json.data) {
+                const d = json.data;
+                title = d.title || "";
+                description = d.description || "";
+                image = (d.image && d.image.url) || "";
+                if (d.publisher) domain = d.publisher;
+            }
+        } else {
+            console.warn("microlink HTTP " + res.status);
         }
-        const d = json.data;
-        return {
-            title: d.title || hostname,
-            description: d.description || "",
-            image: (d.image && d.image.url) || "",
-            domain: d.publisher || hostname,
-        };
     } catch (err) {
-        console.warn("Náhled se nepodařilo načíst:", err);
-        return {
-            title: hostname,
-            description: "",
-            image: "",
-            domain: hostname,
-        };
+        console.warn("microlink selhal:", err && err.message);
     }
+
+    // 2) Fallback: parsování og:image z HTML přes CORS proxy
+    if (!image || !title) {
+        const og = await fetchOpenGraph(url);
+        if (og) {
+            if (!image && og.image) image = og.image;
+            if (!title && og.title) title = og.title;
+            if (!description && og.description) description = og.description;
+            if (og.siteName && domain === hostname) domain = og.siteName;
+        }
+    }
+
+    // 3) Fallback: screenshot stránky (vždy funguje, pomalejší)
+    if (!image && parsed) {
+        image = SCREENSHOT_API + url;
+    }
+
+    return {
+        title: title || hostname,
+        description: description || "",
+        image: image || "",
+        domain: domain || hostname,
+    };
+}
+
+async function fetchOpenGraph(url) {
+    let html = "";
+    for (const proxy of PROXY_ENDPOINTS) {
+        try {
+            const res = await fetch(proxy + encodeURIComponent(url));
+            if (!res.ok) continue;
+            const text = await res.text();
+            if (text && text.length > 200 && /<html|<head|<meta/i.test(text)) {
+                html = text;
+                break;
+            }
+        } catch (_) {}
+    }
+    if (!html) return null;
+
+    const parsed = safeParseUrl(url);
+    const origin = parsed ? parsed.origin : "";
+
+    const metaContent = (attr, value) => {
+        const esc = escapeRegex(value);
+        const re1 = new RegExp(
+            '<meta[^>]+' + attr + '=["\']' + esc + '["\'][^>]*content=["\']([^"\']+)["\']',
+            "i"
+        );
+        const re2 = new RegExp(
+            '<meta[^>]+content=["\']([^"\']+)["\'][^>]*' + attr + '=["\']' + esc + '["\']',
+            "i"
+        );
+        const m = html.match(re1) || html.match(re2);
+        return m ? decodeEntities(m[1].trim()) : "";
+    };
+
+    let image =
+        metaContent("property", "og:image") ||
+        metaContent("name", "og:image") ||
+        metaContent("property", "og:image:url") ||
+        metaContent("name", "twitter:image") ||
+        metaContent("property", "twitter:image") ||
+        metaContent("name", "twitter:image:src");
+    if (image) image = resolveUrl(image, origin);
+
+    let title =
+        metaContent("property", "og:title") ||
+        metaContent("name", "twitter:title");
+    if (!title) {
+        const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (t) title = decodeEntities(t[1].trim());
+    }
+
+    const description =
+        metaContent("property", "og:description") ||
+        metaContent("name", "description") ||
+        metaContent("name", "twitter:description");
+
+    const siteName = metaContent("property", "og:site_name");
+
+    return { title, description, image, siteName };
+}
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function resolveUrl(href, origin) {
+    if (/^https?:\/\//i.test(href)) return href;
+    if (href.startsWith("//")) return "https:" + href;
+    if (href.startsWith("/") && origin) return origin + href;
+    return href;
+}
+
+function decodeEntities(str) {
+    return str
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&nbsp;/g, " ");
+}
+
+// Google favicon služba — spolehlivý poslední fallback při selhání obrázku
+function faviconUrl(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    return (
+        "https://www.google.com/s2/favicons?domain=" +
+        encodeURIComponent(parsed.hostname) +
+        "&sz=128"
+    );
 }
 
 function safeParseUrl(url) {
@@ -726,15 +847,41 @@ function createFeaturedTile(bookmark) {
         img.loading = "lazy";
         img.alt = bookmark.title || "";
         img.draggable = false;
+        let triedFavicon = false;
         img.addEventListener("error", () => {
+            const fav = faviconUrl(bookmark.url);
+            if (!triedFavicon && fav && img.src !== fav) {
+                triedFavicon = true;
+                link.classList.add("bookmark-featured-favicon");
+                img.src = fav;
+                return;
+            }
             link.innerHTML = "";
+            link.classList.remove("bookmark-featured-favicon");
             link.classList.add("bookmark-featured-fallback");
             link.textContent = "🔗";
         });
         link.appendChild(img);
     } else {
-        link.classList.add("bookmark-featured-fallback");
-        link.textContent = "🔗";
+        const fav = faviconUrl(bookmark.url);
+        if (fav) {
+            const img = document.createElement("img");
+            img.src = fav;
+            img.loading = "lazy";
+            img.alt = bookmark.title || "";
+            img.draggable = false;
+            img.addEventListener("error", () => {
+                link.innerHTML = "";
+                link.classList.remove("bookmark-featured-favicon");
+                link.classList.add("bookmark-featured-fallback");
+                link.textContent = "🔗";
+            });
+            link.classList.add("bookmark-featured-favicon");
+            link.appendChild(img);
+        } else {
+            link.classList.add("bookmark-featured-fallback");
+            link.textContent = "🔗";
+        }
     }
     return link;
 }
@@ -872,15 +1019,41 @@ function createTile(bookmark) {
         img.loading = "lazy";
         img.alt = "";
         img.draggable = false;
+        let triedFavicon = false;
         img.addEventListener("error", () => {
+            const fav = faviconUrl(bookmark.url);
+            if (!triedFavicon && fav && img.src !== fav) {
+                triedFavicon = true;
+                imgWrap.classList.add("bookmark-image-favicon");
+                img.src = fav;
+                return;
+            }
             imgWrap.innerHTML = "";
+            imgWrap.classList.remove("bookmark-image-favicon");
             imgWrap.classList.add("bookmark-image-fallback");
             imgWrap.textContent = "🔗";
         });
         imgWrap.appendChild(img);
     } else {
-        imgWrap.classList.add("bookmark-image-fallback");
-        imgWrap.textContent = "🔗";
+        const fav = faviconUrl(bookmark.url);
+        if (fav) {
+            const img = document.createElement("img");
+            img.src = fav;
+            img.loading = "lazy";
+            img.alt = "";
+            img.draggable = false;
+            img.addEventListener("error", () => {
+                imgWrap.innerHTML = "";
+                imgWrap.classList.remove("bookmark-image-favicon");
+                imgWrap.classList.add("bookmark-image-fallback");
+                imgWrap.textContent = "🔗";
+            });
+            imgWrap.classList.add("bookmark-image-favicon");
+            imgWrap.appendChild(img);
+        } else {
+            imgWrap.classList.add("bookmark-image-fallback");
+            imgWrap.textContent = "🔗";
+        }
     }
     link.appendChild(imgWrap);
 
