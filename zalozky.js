@@ -14,7 +14,6 @@ const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const FEATURED_COUNT = 6;
 const PREVIEW_API = "https://api.microlink.io/?url=";
-const SCREENSHOT_API = "https://image.thum.io/get/width/800/noanimate/";
 const PROXY_ENDPOINTS = [
     "https://corsproxy.io/?url=",
     "https://api.allorigins.win/raw?url=",
@@ -328,7 +327,7 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
-// Řetěz: microlink → og:image z HTML (přes CORS proxy) → screenshot (thum.io)
+// Řetěz: site-specific → microlink → og:image a další z HTML (přes proxy) → Wikipedia API
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
@@ -337,6 +336,10 @@ async function fetchPreview(url) {
     let description = "";
     let image = "";
     let domain = hostname;
+
+    // 0) Site-specific: YouTube, Imgur atd. — okamžité, bez sítě
+    const siteImg = getSiteSpecificImage(url);
+    if (siteImg) image = siteImg;
 
     // 1) microlink.io — nejlepší metadata, ale denní limit
     try {
@@ -347,7 +350,7 @@ async function fetchPreview(url) {
                 const d = json.data;
                 title = d.title || "";
                 description = d.description || "";
-                image = (d.image && d.image.url) || "";
+                if (!image && d.image && d.image.url) image = d.image.url;
                 if (d.publisher) domain = d.publisher;
             }
         } else {
@@ -357,7 +360,7 @@ async function fetchPreview(url) {
         console.warn("microlink selhal:", err && err.message);
     }
 
-    // 2) Fallback: parsování og:image z HTML přes CORS proxy
+    // 2) Fallback: parsování více meta/link/JSON-LD zdrojů z HTML přes CORS proxy
     if (!image || !title) {
         const og = await fetchOpenGraph(url);
         if (og) {
@@ -368,10 +371,13 @@ async function fetchPreview(url) {
         }
     }
 
-    // 3) Fallback: screenshot stránky (vždy funguje, pomalejší)
-    if (!image && parsed) {
-        image = SCREENSHOT_API + url;
+    // 3) Wikipedia REST API pro /wiki/ stránky
+    if (!image) {
+        const wp = await getWikipediaImage(url);
+        if (wp) image = wp;
     }
+
+    // Favicon ani screenshot tu neukládáme — favicon je finální fallback až při renderu
 
     return {
         title: title || hostname,
@@ -379,6 +385,54 @@ async function fetchPreview(url) {
         image: image || "",
         domain: domain || hostname,
     };
+}
+
+// Extrakce náhledu podle hostitele (YouTube, Imgur, …) — bez HTTP požadavku
+function getSiteSpecificImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const h = parsed.hostname.toLowerCase().replace(/^www\./, "");
+
+    // YouTube
+    if (h === "youtube.com" || h === "m.youtube.com" || h === "music.youtube.com") {
+        const v = parsed.searchParams.get("v");
+        if (v) return "https://img.youtube.com/vi/" + encodeURIComponent(v) + "/hqdefault.jpg";
+        // /shorts/<id> nebo /embed/<id>
+        const seg = parsed.pathname.split("/").filter(Boolean);
+        if (seg[0] === "shorts" || seg[0] === "embed") {
+            if (seg[1]) return "https://img.youtube.com/vi/" + encodeURIComponent(seg[1]) + "/hqdefault.jpg";
+        }
+    }
+    if (h === "youtu.be") {
+        const id = parsed.pathname.slice(1).split("/")[0];
+        if (id) return "https://img.youtube.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
+    }
+
+    // Imgur přímý obrázek
+    if (h === "i.imgur.com") return url;
+
+    return "";
+}
+
+async function getWikipediaImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const m = parsed.hostname.match(/^([a-z]+)\.wikipedia\.org$/i);
+    if (!m) return "";
+    const pm = parsed.pathname.match(/^\/wiki\/(.+)$/);
+    if (!pm) return "";
+    const lang = m[1];
+    const title = pm[1];
+    try {
+        const res = await fetch(
+            "https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + title
+        );
+        if (!res.ok) return "";
+        const data = await res.json();
+        return (data.thumbnail && data.thumbnail.source) || "";
+    } catch (_) {
+        return "";
+    }
 }
 
 async function fetchOpenGraph(url) {
@@ -419,7 +473,13 @@ async function fetchOpenGraph(url) {
         metaContent("property", "og:image:url") ||
         metaContent("name", "twitter:image") ||
         metaContent("property", "twitter:image") ||
-        metaContent("name", "twitter:image:src");
+        metaContent("name", "twitter:image:src") ||
+        metaContent("itemprop", "image") ||
+        linkHref(html, "image_src") ||
+        extractJsonLdImage(html) ||
+        linkHref(html, "apple-touch-icon-precomposed") ||
+        linkHref(html, "apple-touch-icon") ||
+        findFirstMeaningfulImage(html);
     if (image) image = resolveUrl(image, origin);
 
     let title =
@@ -442,6 +502,84 @@ async function fetchOpenGraph(url) {
 
 function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// <link rel="<rel>" href="..."> (nebo v opačném pořadí atributů)
+function linkHref(html, rel) {
+    const esc = escapeRegex(rel);
+    const re1 = new RegExp(
+        '<link[^>]+rel=["\']' + esc + '["\'][^>]*href=["\']([^"\']+)["\']',
+        "i"
+    );
+    const re2 = new RegExp(
+        '<link[^>]+href=["\']([^"\']+)["\'][^>]*rel=["\']' + esc + '["\']',
+        "i"
+    );
+    const m = html.match(re1) || html.match(re2);
+    return m ? decodeEntities(m[1].trim()) : "";
+}
+
+// JSON-LD "image" pole (strukturovaná data schema.org)
+function extractJsonLdImage(html) {
+    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+        const raw = m[1].trim();
+        if (!raw) continue;
+        try {
+            const parsed = JSON.parse(raw);
+            const img = pickImageFromJsonLd(parsed);
+            if (img) return img;
+        } catch (_) {
+            // Některé stránky vkládají JSON-LD s komentáři nebo chybnou syntaxí — ignoruj
+        }
+    }
+    return "";
+}
+
+function pickImageFromJsonLd(node) {
+    if (!node || typeof node !== "object") return "";
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const r = pickImageFromJsonLd(item);
+            if (r) return r;
+        }
+        return "";
+    }
+    if (node.image) {
+        if (typeof node.image === "string") return node.image;
+        if (Array.isArray(node.image)) {
+            for (const x of node.image) {
+                if (typeof x === "string") return x;
+                if (x && typeof x === "object" && x.url) return x.url;
+            }
+        }
+        if (typeof node.image === "object" && node.image.url) return node.image.url;
+    }
+    if (node["@graph"]) return pickImageFromJsonLd(node["@graph"]);
+    return "";
+}
+
+// První „smysluplný" <img> v těle — přeskakuje tracking pixely a malé ikony
+function findFirstMeaningfulImage(html) {
+    const bodyIdx = html.search(/<body[\s>]/i);
+    const start = bodyIdx === -1 ? 0 : bodyIdx;
+    const body = html.slice(start);
+    const re = /<img\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(body)) !== null) {
+        const attrs = m[1];
+        const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+        if (!srcMatch) continue;
+        const src = srcMatch[1];
+        if (!src || src.startsWith("data:")) continue;
+        if (/1x1|pixel|spacer|blank|tracking|analytics|beacon|sprite/i.test(src)) continue;
+        const w = parseInt((attrs.match(/\bwidth=["']?(\d+)/i) || [])[1] || "0", 10);
+        const h = parseInt((attrs.match(/\bheight=["']?(\d+)/i) || [])[1] || "0", 10);
+        if ((w > 0 && w < 120) || (h > 0 && h < 120)) continue;
+        return decodeEntities(src);
+    }
+    return "";
 }
 
 function resolveUrl(href, origin) {
