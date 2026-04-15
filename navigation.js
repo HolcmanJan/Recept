@@ -17,7 +17,80 @@ const NAV_ITEMS = [
 // Jednotný vstupní bod pro inicializaci navigace na stránce.
 export function initNavigation(activePage, onUserChange) {
     renderBottomNav(activePage);
+    ensureHeaderAvatar(activePage);
     initAuth(onUserChange);
+}
+
+// ----- Avatar v horní liště -----
+function ensureHeaderAvatar(activePage) {
+    const headerInner = document.querySelector("header .header-inner");
+    if (!headerInner) return;
+    if (headerInner.querySelector(".user-avatar")) return;
+
+    const a = document.createElement("a");
+    a.id = "user-avatar";
+    a.className = "user-avatar user-avatar-loading";
+    a.href = "nastaveni.html";
+    a.setAttribute("aria-label", "Účet");
+    a.title = "Účet";
+
+    // Na stránce Nastavení nedává smysl navigovat jinam
+    if (activePage === "nastaveni") {
+        a.setAttribute("aria-current", "page");
+    }
+
+    // Výchozí placeholder (siluety)
+    a.innerHTML = '<span class="user-avatar-placeholder">👤</span>';
+
+    // Přidej do pravé části hlavičky (vedle .header-actions pokud existuje)
+    const actions = headerInner.querySelector(".header-actions");
+    if (actions) {
+        actions.appendChild(a);
+    } else {
+        headerInner.appendChild(a);
+    }
+}
+
+function updateHeaderAvatar(user) {
+    const a = document.getElementById("user-avatar");
+    if (!a) return;
+    a.classList.remove("user-avatar-loading");
+    a.innerHTML = "";
+
+    if (!user) {
+        a.classList.remove("is-signed-in");
+        const span = document.createElement("span");
+        span.className = "user-avatar-placeholder";
+        span.textContent = "👤";
+        a.appendChild(span);
+        a.title = "Přihlásit se";
+        return;
+    }
+
+    a.classList.add("is-signed-in");
+    a.title = user.displayName || user.email || "Účet";
+
+    if (user.photoURL) {
+        const img = document.createElement("img");
+        img.src = user.photoURL;
+        img.alt = user.displayName || "Účet";
+        img.referrerPolicy = "no-referrer";
+        img.addEventListener("error", () => {
+            img.remove();
+            a.appendChild(buildInitialSpan(user));
+        });
+        a.appendChild(img);
+    } else {
+        a.appendChild(buildInitialSpan(user));
+    }
+}
+
+function buildInitialSpan(user) {
+    const span = document.createElement("span");
+    span.className = "user-avatar-initial";
+    const src = user.displayName || user.email || "?";
+    span.textContent = src.trim().charAt(0).toUpperCase();
+    return span;
 }
 
 function renderBottomNav(activePage) {
@@ -65,6 +138,7 @@ function initAuth(onUserChange) {
     renderAuthArea(null, false);
     onAuthStateChanged(auth, (user) => {
         renderAuthArea(user, true);
+        updateHeaderAvatar(user);
         if (typeof onUserChange === "function") {
             onUserChange(user);
         }
