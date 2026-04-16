@@ -477,9 +477,9 @@ async function fetchOpenGraph(url) {
         metaContent("itemprop", "image") ||
         linkHref(html, "image_src") ||
         extractJsonLdImage(html) ||
-        linkHref(html, "apple-touch-icon-precomposed") ||
-        linkHref(html, "apple-touch-icon") ||
         findFirstMeaningfulImage(html);
+    // apple-touch-icon záměrně NEpoužíváme jako uložený náhled — to je SITE ikona,
+    // ne náhled konkrétní URL. Použije se až při renderu jako favicon fallback.
     if (image) image = resolveUrl(image, origin);
 
     let title =
@@ -1063,6 +1063,48 @@ function isLegacyScreenshotUrl(url) {
     return typeof url === "string" && /image\.thum\.io\//i.test(url);
 }
 
+// Generický „obrázek stránky" — favicon, apple-touch-icon, manifest ikona, logo apod.
+// Tohle není náhled konkrétního URL, takže to chceme přegenerovat.
+function isGenericSiteIcon(imageUrl) {
+    if (!imageUrl || typeof imageUrl !== "string") return false;
+    if (/google\.com\/s2\/favicons/i.test(imageUrl)) return true;
+    if (/(?:^|\/)favicon[._-]?\d*\.(?:ico|png|jpe?g|svg|webp|gif)/i.test(imageUrl)) return true;
+    if (/\/favicon\b/i.test(imageUrl)) return true;
+    if (/apple-touch-icon/i.test(imageUrl)) return true;
+    if (/\/icon[-_]\d+(?:x\d+)?\.(?:png|jpe?g|svg|webp)/i.test(imageUrl)) return true;
+    if (/\/manifest-icon/i.test(imageUrl)) return true;
+    if (/\/site[-_]?logo/i.test(imageUrl)) return true;
+    if (/\/touch-icon/i.test(imageUrl)) return true;
+    return false;
+}
+
+// Mapa hostname → image URL → počet záložek. Když 2+ záložky ze stejné domény
+// sdílí přesně stejný obrázek, je to skoro jistě SITE obrázek (logo/banner), ne náhled URL.
+function buildSharedImageMap(bookmarksList) {
+    const map = new Map();
+    for (const b of bookmarksList) {
+        if (!b || !b.image || !b.url) continue;
+        const u = safeParseUrl(b.url);
+        if (!u) continue;
+        let inner = map.get(u.hostname);
+        if (!inner) {
+            inner = new Map();
+            map.set(u.hostname, inner);
+        }
+        inner.set(b.image, (inner.get(b.image) || 0) + 1);
+    }
+    return map;
+}
+
+function isSharedSiteImage(bookmark, sharedMap) {
+    if (!bookmark || !bookmark.image || !bookmark.url) return false;
+    const u = safeParseUrl(bookmark.url);
+    if (!u) return false;
+    const inner = sharedMap.get(u.hostname);
+    if (!inner) return false;
+    return (inner.get(bookmark.image) || 0) >= 2;
+}
+
 async function fixBrokenPreviews() {
     const filtered = filteredBookmarks();
     if (filtered.length === 0) {
@@ -1072,6 +1114,9 @@ async function fixBrokenPreviews() {
 
     featuredFixBtn.disabled = true;
     featuredFixBtn.classList.add("is-loading");
+
+    // Mapa pro detekci sdílených site obrázků (počítáno přes všechny záložky, ne jen filtr)
+    const sharedMap = buildSharedImageMap(bookmarks);
 
     let fixed = 0;
     let checked = 0;
@@ -1084,21 +1129,25 @@ async function fixBrokenPreviews() {
                 "info"
             );
 
-            // Staré screenshoty (thum.io) vždy přegenerovat, nekontrolovat jestli se načítají
             const legacy = isLegacyScreenshotUrl(bookmark.image);
-            const works = !legacy && (await isImageLoadable(bookmark.image));
+            const generic =
+                isGenericSiteIcon(bookmark.image) || isSharedSiteImage(bookmark, sharedMap);
+            // Když máme legacy screenshot nebo generickou ikonu, vždy přegenerovat
+            const works = !legacy && !generic && (await isImageLoadable(bookmark.image));
             if (works) continue;
 
             try {
                 const preview = await fetchPreview(bookmark.url);
-                // U legacy screenshotů akceptuj i prázdný výsledek (raději nic než thum.io);
-                // jinak přepiš jen když se změnil obrázek
-                if (legacy || (preview.image && preview.image !== bookmark.image)) {
+                // Pokud i nový náhled je generický, raději ho zahodíme (favicon až při renderu)
+                let newImg = preview.image || "";
+                if (newImg && isGenericSiteIcon(newImg)) newImg = "";
+
+                if (legacy || generic || (newImg && newImg !== bookmark.image)) {
                     await updateBookmark({
                         ...bookmark,
                         title: preview.title || bookmark.title,
                         description: preview.description || bookmark.description,
-                        image: preview.image || "",
+                        image: newImg,
                         domain: preview.domain || bookmark.domain,
                     });
                     fixed++;
