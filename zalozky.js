@@ -14,7 +14,7 @@ const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const FEATURED_COUNT = 8;
 // ↓↓↓ Po deployi workeru nahraď svou URL ↓↓↓
-const PREVIEW_WORKER = "https://link-preview.YOUR_SUBDOMAIN.workers.dev/?url=";
+const PREVIEW_WORKER = "https://link-preview.recept.workers.dev";
 const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
 const TAB_2_PASSWORD = "abc129";
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
