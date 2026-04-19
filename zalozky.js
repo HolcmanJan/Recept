@@ -1321,9 +1321,8 @@ function createTile(bookmark) {
         }
     });
     tabSelect.addEventListener("click", (e) => e.stopPropagation());
-    tile.appendChild(tabSelect);
 
-    // Tlačítko smazání (pravý pruh přes celou výšku)
+    // Tlačítko smazání
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "bookmark-delete";
@@ -1342,7 +1341,12 @@ function createTile(bookmark) {
             alert("Chyba při mazání: " + err.message);
         }
     });
-    tile.appendChild(delBtn);
+
+    const controls = document.createElement("div");
+    controls.className = "bookmark-controls";
+    controls.appendChild(tabSelect);
+    controls.appendChild(delBtn);
+    tile.appendChild(controls);
 
     return tile;
 }
