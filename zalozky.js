@@ -12,7 +12,7 @@ import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
-const FEATURED_COUNT = 6;
+const FEATURED_COUNT = 8;
 const PREVIEW_API = "https://api.microlink.io/?url=";
 const PROXY_ENDPOINTS = [
     "https://corsproxy.io/?url=",
