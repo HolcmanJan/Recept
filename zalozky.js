@@ -707,6 +707,8 @@ function resetRender() {
     }
 
     gridEl.classList.remove("reddit-grid");
+    gridEl.classList.toggle("tab-landscape", activeTab === "2");
+    featuredGridEl.classList.toggle("tab-landscape", activeTab === "2");
     renderFeatured();
 
     if (filtered.length === 0) {
