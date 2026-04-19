@@ -1,5 +1,5 @@
 // Stránka s uživatelskými záložkami (URL → dlaždice s náhledem).
-// Metadata stránek se získávají přes microlink.io, screenshot fallback přes thum.io.
+// Metadata stránek se získávají přes vlastní Cloudflare Worker.
 import { db } from "./firebase-init.js";
 import {
     collection,
@@ -12,7 +12,12 @@ import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
-const PREVIEW_API = "https://api.microlink.io/?url=";
+const FEATURED_COUNT = 8;
+// ↓↓↓ Po deployi workeru nahraď svou URL ↓↓↓
+const PREVIEW_WORKER = "https://link-preview.YOUR_SUBDOMAIN.workers.dev/?url=";
+const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
+const TAB_2_PASSWORD = "abc129";
+const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
 
 // ----- Stav -----
 let bookmarks = [];
@@ -20,6 +25,8 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
+let activeTab = "unassigned";
+let tab2Unlocked = false;
 
 // ----- DOM -----
 const formEl = document.getElementById("bookmark-form");
@@ -30,6 +37,177 @@ const gridEl = document.getElementById("bookmarks-grid");
 const emptyEl = document.getElementById("bookmarks-empty");
 const sentinelEl = document.getElementById("scroll-sentinel");
 const endEl = document.getElementById("bookmarks-end");
+const tabsEl = document.getElementById("bookmark-tabs");
+const featuredEl = document.getElementById("bookmark-featured");
+const featuredGridEl = document.getElementById("bookmark-featured-grid");
+const featuredRefreshBtn = document.getElementById("featured-refresh");
+const featuredFixBtn = document.getElementById("featured-fix");
+
+featuredRefreshBtn.addEventListener("click", () => {
+    renderFeatured();
+});
+
+featuredFixBtn.addEventListener("click", () => {
+    fixBrokenPreviews();
+});
+
+// ----- Záložkové přepínače -----
+tabsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".bookmark-tab");
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    if (tab === activeTab) return;
+
+    // Heslem chráněná složka 2
+    if (tab === "2" && !tab2Unlocked) {
+        const pwd = prompt("Heslo pro složku 2:");
+        if (pwd === null) return;
+        if (pwd !== TAB_2_PASSWORD) {
+            alert("Nesprávné heslo.");
+            return;
+        }
+        tab2Unlocked = true;
+    }
+
+    activeTab = tab;
+    tabsEl.querySelectorAll(".bookmark-tab").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === activeTab);
+    });
+    resetRender();
+});
+
+// ----- Filtr podle složky -----
+function filteredBookmarks() {
+    if (activeTab === "unassigned") {
+        return bookmarks.filter((b) => !b.tab);
+    }
+    return bookmarks.filter((b) => b.tab === activeTab);
+}
+
+// ----- Reddit -----
+function isRedditUrl(url) {
+    const u = safeParseUrl(url);
+    if (!u) return false;
+    const h = u.hostname.toLowerCase();
+    return h === "reddit.com" ||
+        h === "www.reddit.com" ||
+        h === "old.reddit.com" ||
+        h === "new.reddit.com" ||
+        h === "np.reddit.com" ||
+        h === "m.reddit.com";
+}
+
+function redditJsonUrl(url) {
+    const u = safeParseUrl(url);
+    if (!u) return null;
+    // Odstraň query + fragment, znormalizuj host na www, přidej .json
+    let pathname = u.pathname;
+    if (pathname.endsWith("/")) pathname = pathname.slice(0, -1);
+    const base = "https://www.reddit.com" + pathname + ".json";
+    const params = new URLSearchParams();
+    params.set("raw_json", "1");
+    params.set("limit", String(REDDIT_POST_LIMIT));
+    return base + "?" + params.toString();
+}
+
+async function fetchRedditJson(jsonUrl) {
+    // 1) Zkus přímo
+    try {
+        const res = await fetch(jsonUrl);
+        if (res.ok) {
+            const text = await res.text();
+            const trimmed = text.trim();
+            // Reddit vrací 200 s HTML challenge, když to vyhodnotí jako bota
+            if (!trimmed.startsWith("<")) {
+                return JSON.parse(trimmed);
+            }
+            console.warn("Reddit vrátil HTML (blokování), zkouším proxy");
+        } else {
+            console.warn("Reddit přímo: HTTP " + res.status);
+        }
+    } catch (err) {
+        console.warn("Přímé volání Redditu selhalo:", err.message || err);
+    }
+
+    // 2) Fallback přes veřejnou CORS proxy
+    const proxies = [
+        "https://corsproxy.io/?url=" + encodeURIComponent(jsonUrl),
+        "https://api.allorigins.win/raw?url=" + encodeURIComponent(jsonUrl),
+    ];
+    let lastErr;
+    for (const proxyUrl of proxies) {
+        try {
+            const res = await fetch(proxyUrl);
+            if (!res.ok) {
+                lastErr = new Error("Proxy HTTP " + res.status);
+                continue;
+            }
+            const text = await res.text();
+            const trimmed = text.trim();
+            if (trimmed.startsWith("<")) {
+                lastErr = new Error("Proxy vrátila HTML");
+                continue;
+            }
+            return JSON.parse(trimmed);
+        } catch (err) {
+            lastErr = err;
+        }
+    }
+    throw lastErr || new Error("Všechny zdroje selhaly");
+}
+
+async function fetchRedditPosts(url) {
+    const jsonUrl = redditJsonUrl(url);
+    if (!jsonUrl) throw new Error("Neplatná Reddit URL");
+    const data = await fetchRedditJson(jsonUrl);
+    // Endpoint příspěvku vrací pole [postListing, commentsListing]; subreddit vrací jen listing.
+    let listing;
+    if (Array.isArray(data)) {
+        listing = data[0];
+    } else {
+        listing = data;
+    }
+    const children = (listing && listing.data && listing.data.children) || [];
+    return children
+        .map((c) => c.data)
+        .filter((p) => p && p.kind !== "more");
+}
+
+function pickBestRedditImage(post) {
+    // Priorita: preview.images > thumbnail > url_overridden_by_dest (pokud obrázek)
+    try {
+        const pv = post.preview && post.preview.images && post.preview.images[0];
+        if (pv) {
+            const resolutions = pv.resolutions || [];
+            // Vezmi prostřední/větší rozlišení (<= 960 px široké)
+            const pref = resolutions.filter((r) => r.width <= 960).pop();
+            if (pref) return pref.url;
+            if (pv.source && pv.source.url) return pv.source.url;
+        }
+    } catch (_) {}
+    const thumb = post.thumbnail;
+    if (thumb && /^https?:\/\//.test(thumb)) return thumb;
+    const target = post.url_overridden_by_dest || post.url;
+    if (target && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(target)) return target;
+    return "";
+}
+
+function formatScore(n) {
+    if (typeof n !== "number") return "0";
+    if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return String(n);
+}
+
+function timeAgo(unixSec) {
+    if (!unixSec) return "";
+    const diff = Date.now() / 1000 - unixSec;
+    if (diff < 60) return "před chvílí";
+    if (diff < 3600) return "před " + Math.floor(diff / 60) + " min";
+    if (diff < 86400) return "před " + Math.floor(diff / 3600) + " h";
+    if (diff < 86400 * 30) return "před " + Math.floor(diff / 86400) + " dny";
+    if (diff < 86400 * 365) return "před " + Math.floor(diff / (86400 * 30)) + " měs.";
+    return "před " + Math.floor(diff / (86400 * 365)) + " r.";
+}
 
 // ----- Inicializace navigace + reakce na změnu uživatele -----
 initNavigation("zalozky", (user) => {
@@ -146,26 +324,23 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
+// Vše řeší vlastní Cloudflare Worker — stáhne HTML, parsuje og:image, JSON-LD atd.
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
 
     try {
-        const res = await fetch(PREVIEW_API + encodeURIComponent(url));
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const json = await res.json();
-        if (json.status !== "success" || !json.data) {
-            throw new Error("API odpověď neúspěšná");
-        }
-        const d = json.data;
+        const res = await fetch(PREVIEW_WORKER + encodeURIComponent(url));
+        if (!res.ok) throw new Error("Worker HTTP " + res.status);
+        const data = await res.json();
         return {
-            title: d.title || hostname,
-            description: d.description || "",
-            image: (d.image && d.image.url) || "",
-            domain: d.publisher || hostname,
+            title: data.title || hostname,
+            description: data.description || "",
+            image: data.image || "",
+            domain: data.domain || hostname,
         };
     } catch (err) {
-        console.warn("Náhled se nepodařilo načíst:", err);
+        console.warn("Preview worker selhal:", err && err.message);
         return {
             title: hostname,
             description: "",
@@ -173,6 +348,17 @@ async function fetchPreview(url) {
             domain: hostname,
         };
     }
+}
+
+// Google favicon služba — spolehlivý poslední fallback při selhání obrázku
+function faviconUrl(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    return (
+        "https://www.google.com/s2/favicons?domain=" +
+        encodeURIComponent(parsed.hostname) +
+        "&sz=128"
+    );
 }
 
 function safeParseUrl(url) {
@@ -210,6 +396,7 @@ async function handleSubmit(event) {
             image: preview.image,
             domain: preview.domain,
             favorite: false,
+            tab: activeTab === "unassigned" ? null : activeTab,
             createdAt: Date.now(),
         };
         await persistBookmark(bookmark);
@@ -248,11 +435,39 @@ async function toggleFavorite(bookmark) {
 function resetRender() {
     gridEl.innerHTML = "";
     renderedCount = 0;
+    disconnectObserver();
 
-    if (bookmarks.length === 0) {
-        emptyEl.classList.remove("hidden");
+    const filtered = filteredBookmarks();
+
+    // V Reddit složce: jiný layout, žádný featured, žádný infinite scroll
+    if (activeTab === "reddit") {
+        featuredEl.classList.add("hidden");
+        gridEl.classList.add("reddit-grid");
         endEl.classList.add("hidden");
-        disconnectObserver();
+
+        if (filtered.length === 0) {
+            emptyEl.classList.remove("hidden");
+            emptyEl.textContent =
+                "V Reddit složce nejsou žádné odkazy. Vlož URL příspěvku nebo subredditu.";
+            return;
+        }
+        emptyEl.classList.add("hidden");
+        renderRedditFeed(filtered);
+        return;
+    }
+
+    gridEl.classList.remove("reddit-grid");
+    gridEl.classList.toggle("tab-landscape", activeTab === "2");
+    featuredGridEl.classList.toggle("tab-landscape", activeTab === "2");
+    renderFeatured();
+
+    if (filtered.length === 0) {
+        emptyEl.classList.remove("hidden");
+        emptyEl.textContent =
+            bookmarks.length === 0
+                ? "Zatím tu nejsou žádné záložky. Vlož nahoře první URL!"
+                : "V této složce nejsou žádné odkazy.";
+        endEl.classList.add("hidden");
         return;
     }
     emptyEl.classList.add("hidden");
@@ -261,18 +476,449 @@ function resetRender() {
     ensureObserver();
 }
 
+// ----- Reddit feed -----
+async function renderRedditFeed(filtered) {
+    const reddit = filtered.filter((b) => isRedditUrl(b.url));
+    const other = filtered.filter((b) => !isRedditUrl(b.url));
+
+    // Loading skeleton pro reddit URL
+    const loadingMap = new Map();
+    for (const b of reddit) {
+        const sk = document.createElement("article");
+        sk.className = "reddit-card reddit-card-loading";
+        sk.innerHTML = '<div class="reddit-card-spinner">Načítám příspěvek…</div>';
+        gridEl.appendChild(sk);
+        loadingMap.set(b.id, sk);
+    }
+
+    // Ne-Reddit URL ve složce: zobrazit jako normální dlaždice
+    for (const b of other) {
+        gridEl.appendChild(createTile(b));
+    }
+
+    // Paralelně načti všechny Reddit příspěvky
+    await Promise.all(reddit.map(async (bookmark) => {
+        const skeleton = loadingMap.get(bookmark.id);
+        try {
+            const posts = await fetchRedditPosts(bookmark.url);
+            if (posts.length === 0) {
+                renderRedditError(skeleton, bookmark, "Žádné příspěvky.");
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            for (const post of posts) {
+                frag.appendChild(createRedditCard(post, bookmark));
+            }
+            skeleton.replaceWith(frag);
+        } catch (err) {
+            console.error("Reddit fetch error pro", bookmark.url, err);
+            const detail = err && err.message ? " (" + err.message + ")" : "";
+            renderRedditError(skeleton, bookmark, "Nelze načíst příspěvek" + detail + ".");
+        }
+    }));
+}
+
+function renderRedditError(skeleton, bookmark, msg) {
+    const card = document.createElement("article");
+    card.className = "reddit-card reddit-card-error";
+
+    const body = document.createElement("div");
+    body.className = "reddit-card-body";
+
+    const title = document.createElement("h3");
+    title.className = "reddit-card-title";
+    title.textContent = bookmark.title || bookmark.url;
+    body.appendChild(title);
+
+    const errP = document.createElement("p");
+    errP.className = "reddit-card-desc";
+    errP.textContent = msg + " Klikni pro otevření na Redditu.";
+    body.appendChild(errP);
+
+    const meta = document.createElement("div");
+    meta.className = "reddit-card-meta";
+    const link = document.createElement("a");
+    link.href = bookmark.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "Otevřít na Redditu →";
+    meta.appendChild(link);
+    body.appendChild(meta);
+
+    card.appendChild(body);
+
+    // Smazat záložku
+    card.appendChild(createRedditDeleteBtn(bookmark));
+
+    skeleton.replaceWith(card);
+}
+
+function createRedditCard(post, bookmark) {
+    const card = document.createElement("article");
+    card.className = "reddit-card";
+    if (post.over_18) card.classList.add("reddit-card-nsfw");
+
+    // Hlavička: subreddit · autor · čas
+    const head = document.createElement("div");
+    head.className = "reddit-card-head";
+    const sub = document.createElement("span");
+    sub.className = "reddit-card-sub";
+    sub.textContent = "r/" + (post.subreddit || "?");
+    head.appendChild(sub);
+    const sep1 = document.createElement("span");
+    sep1.className = "reddit-card-sep";
+    sep1.textContent = "·";
+    head.appendChild(sep1);
+    const author = document.createElement("span");
+    author.className = "reddit-card-author";
+    author.textContent = "u/" + (post.author || "?");
+    head.appendChild(author);
+    const sep2 = document.createElement("span");
+    sep2.className = "reddit-card-sep";
+    sep2.textContent = "·";
+    head.appendChild(sep2);
+    const time = document.createElement("span");
+    time.className = "reddit-card-time";
+    time.textContent = timeAgo(post.created_utc);
+    head.appendChild(time);
+    if (post.over_18) {
+        const nsfw = document.createElement("span");
+        nsfw.className = "reddit-card-badge reddit-card-badge-nsfw";
+        nsfw.textContent = "NSFW";
+        head.appendChild(nsfw);
+    }
+    card.appendChild(head);
+
+    // Titulek (odkaz na post)
+    const titleLink = document.createElement("a");
+    titleLink.className = "reddit-card-title-link";
+    titleLink.href = "https://www.reddit.com" + (post.permalink || "");
+    titleLink.target = "_blank";
+    titleLink.rel = "noopener noreferrer";
+    const title = document.createElement("h3");
+    title.className = "reddit-card-title";
+    title.textContent = post.title || "";
+    titleLink.appendChild(title);
+    card.appendChild(titleLink);
+
+    // Obrázek
+    const imgUrl = pickBestRedditImage(post);
+    if (imgUrl && !post.is_video) {
+        const imgWrap = document.createElement("a");
+        imgWrap.className = "reddit-card-image";
+        imgWrap.href = "https://www.reddit.com" + (post.permalink || "");
+        imgWrap.target = "_blank";
+        imgWrap.rel = "noopener noreferrer";
+        const img = document.createElement("img");
+        img.src = imgUrl;
+        img.alt = post.title || "";
+        img.loading = "lazy";
+        img.addEventListener("error", () => imgWrap.remove());
+        imgWrap.appendChild(img);
+        card.appendChild(imgWrap);
+    } else if (post.is_video) {
+        const badge = document.createElement("div");
+        badge.className = "reddit-card-video-badge";
+        badge.textContent = "▶ Video — otevřít na Redditu";
+        card.appendChild(badge);
+    }
+
+    // Text příspěvku (selftext)
+    if (post.selftext && post.selftext.trim()) {
+        const desc = document.createElement("p");
+        desc.className = "reddit-card-desc";
+        const text = post.selftext.trim();
+        desc.textContent = text.length > 300 ? text.slice(0, 300) + "…" : text;
+        card.appendChild(desc);
+    }
+
+    // Patička: skóre, komentáře, odkaz
+    const meta = document.createElement("div");
+    meta.className = "reddit-card-meta";
+
+    const score = document.createElement("span");
+    score.className = "reddit-card-stat";
+    score.innerHTML = "▲ <strong>" + formatScore(post.score || 0) + "</strong>";
+    meta.appendChild(score);
+
+    const comments = document.createElement("a");
+    comments.className = "reddit-card-stat reddit-card-stat-link";
+    comments.href = "https://www.reddit.com" + (post.permalink || "");
+    comments.target = "_blank";
+    comments.rel = "noopener noreferrer";
+    comments.innerHTML = "💬 " + formatScore(post.num_comments || 0);
+    meta.appendChild(comments);
+
+    // Externí link (pokud post odkazuje mimo Reddit)
+    const target = post.url_overridden_by_dest;
+    if (target && !target.includes("reddit.com") && !/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(target)) {
+        const ext = document.createElement("a");
+        ext.className = "reddit-card-stat reddit-card-stat-link";
+        ext.href = target;
+        ext.target = "_blank";
+        ext.rel = "noopener noreferrer";
+        const host = safeParseUrl(target);
+        ext.textContent = "🔗 " + (host ? host.hostname.replace(/^www\./, "") : "odkaz");
+        meta.appendChild(ext);
+    }
+
+    card.appendChild(meta);
+
+    // Smazat zdrojovou záložku (jen u prvního postu ze záložky — tlačítko v rohu)
+    card.appendChild(createRedditDeleteBtn(bookmark));
+
+    return card;
+}
+
+function createRedditDeleteBtn(bookmark) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reddit-card-delete";
+    btn.setAttribute("aria-label", "Smazat záložku");
+    btn.title = "Smazat záložku";
+    btn.textContent = "×";
+    btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const ok = window.confirm("Smazat Reddit záložku?\n\n" + (bookmark.title || bookmark.url));
+        if (!ok) return;
+        try {
+            await removeBookmark(bookmark.id);
+        } catch (err) {
+            console.error(err);
+            alert("Chyba: " + err.message);
+        }
+    });
+    return btn;
+}
+
+// ----- Náhodný výběr 6 záložek -----
+function pickRandom(arr, n) {
+    if (arr.length <= n) return arr.slice();
+    const picks = [];
+    const used = new Set();
+    while (picks.length < n) {
+        const idx = Math.floor(Math.random() * arr.length);
+        if (used.has(idx)) continue;
+        used.add(idx);
+        picks.push(arr[idx]);
+    }
+    return picks;
+}
+
+function renderFeatured() {
+    const filtered = filteredBookmarks();
+    featuredGridEl.innerHTML = "";
+
+    if (filtered.length === 0) {
+        featuredEl.classList.add("hidden");
+        return;
+    }
+    featuredEl.classList.remove("hidden");
+
+    const picks = pickRandom(filtered, FEATURED_COUNT);
+    for (const bookmark of picks) {
+        featuredGridEl.appendChild(createFeaturedTile(bookmark));
+    }
+}
+
+function createFeaturedTile(bookmark) {
+    const link = document.createElement("a");
+    link.href = bookmark.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "bookmark-featured-item";
+    link.title = bookmark.title || bookmark.url;
+    link.draggable = false;
+
+    if (bookmark.image) {
+        const img = document.createElement("img");
+        img.src = bookmark.image;
+        img.loading = "lazy";
+        img.alt = bookmark.title || "";
+        img.draggable = false;
+        let triedFavicon = false;
+        img.addEventListener("error", () => {
+            const fav = faviconUrl(bookmark.url);
+            if (!triedFavicon && fav && img.src !== fav) {
+                triedFavicon = true;
+                link.classList.add("bookmark-featured-favicon");
+                img.src = fav;
+                return;
+            }
+            link.innerHTML = "";
+            link.classList.remove("bookmark-featured-favicon");
+            link.classList.add("bookmark-featured-fallback");
+            link.textContent = "🔗";
+        });
+        link.appendChild(img);
+    } else {
+        const fav = faviconUrl(bookmark.url);
+        if (fav) {
+            const img = document.createElement("img");
+            img.src = fav;
+            img.loading = "lazy";
+            img.alt = bookmark.title || "";
+            img.draggable = false;
+            img.addEventListener("error", () => {
+                link.innerHTML = "";
+                link.classList.remove("bookmark-featured-favicon");
+                link.classList.add("bookmark-featured-fallback");
+                link.textContent = "🔗";
+            });
+            link.classList.add("bookmark-featured-favicon");
+            link.appendChild(img);
+        } else {
+            link.classList.add("bookmark-featured-fallback");
+            link.textContent = "🔗";
+        }
+    }
+    return link;
+}
+
 function renderNextPage() {
-    const nextCount = Math.min(renderedCount + PAGE_SIZE, bookmarks.length);
+    const filtered = filteredBookmarks();
+    const nextCount = Math.min(renderedCount + PAGE_SIZE, filtered.length);
     for (let i = renderedCount; i < nextCount; i++) {
-        gridEl.appendChild(createTile(bookmarks[i]));
+        gridEl.appendChild(createTile(filtered[i]));
     }
     renderedCount = nextCount;
 
-    if (renderedCount >= bookmarks.length) {
+    if (renderedCount >= filtered.length) {
         disconnectObserver();
         endEl.classList.remove("hidden");
     } else {
         endEl.classList.add("hidden");
+    }
+}
+
+// ----- Oprava chybějících náhledů -----
+function isImageLoadable(url) {
+    return new Promise((resolve) => {
+        if (!url) return resolve(false);
+        const img = new Image();
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            resolve(ok);
+        };
+        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+        img.onerror = () => finish(false);
+        img.src = url;
+        setTimeout(() => finish(false), 8000);
+    });
+}
+
+// Staré náhledy vygenerované jako screenshot přes thum.io — chceme je přegenerovat
+function isLegacyScreenshotUrl(url) {
+    return typeof url === "string" && /image\.thum\.io\//i.test(url);
+}
+
+// Generický „obrázek stránky" — favicon, apple-touch-icon, manifest ikona, logo apod.
+// Tohle není náhled konkrétního URL, takže to chceme přegenerovat.
+function isGenericSiteIcon(imageUrl) {
+    if (!imageUrl || typeof imageUrl !== "string") return false;
+    if (/google\.com\/s2\/favicons/i.test(imageUrl)) return true;
+    if (/(?:^|\/)favicon[._-]?\d*\.(?:ico|png|jpe?g|svg|webp|gif)/i.test(imageUrl)) return true;
+    if (/\/favicon\b/i.test(imageUrl)) return true;
+    if (/apple-touch-icon/i.test(imageUrl)) return true;
+    if (/\/icon[-_]\d+(?:x\d+)?\.(?:png|jpe?g|svg|webp)/i.test(imageUrl)) return true;
+    if (/\/manifest-icon/i.test(imageUrl)) return true;
+    if (/\/site[-_]?logo/i.test(imageUrl)) return true;
+    if (/\/touch-icon/i.test(imageUrl)) return true;
+    return false;
+}
+
+// Mapa hostname → image URL → počet záložek. Když 2+ záložky ze stejné domény
+// sdílí přesně stejný obrázek, je to skoro jistě SITE obrázek (logo/banner), ne náhled URL.
+function buildSharedImageMap(bookmarksList) {
+    const map = new Map();
+    for (const b of bookmarksList) {
+        if (!b || !b.image || !b.url) continue;
+        const u = safeParseUrl(b.url);
+        if (!u) continue;
+        let inner = map.get(u.hostname);
+        if (!inner) {
+            inner = new Map();
+            map.set(u.hostname, inner);
+        }
+        inner.set(b.image, (inner.get(b.image) || 0) + 1);
+    }
+    return map;
+}
+
+function isSharedSiteImage(bookmark, sharedMap) {
+    if (!bookmark || !bookmark.image || !bookmark.url) return false;
+    const u = safeParseUrl(bookmark.url);
+    if (!u) return false;
+    const inner = sharedMap.get(u.hostname);
+    if (!inner) return false;
+    return (inner.get(bookmark.image) || 0) >= 2;
+}
+
+async function fixBrokenPreviews() {
+    const filtered = filteredBookmarks();
+    if (filtered.length === 0) {
+        showStatus("V této složce nejsou žádné záložky.", "info");
+        return;
+    }
+
+    featuredFixBtn.disabled = true;
+    featuredFixBtn.classList.add("is-loading");
+
+    // Mapa pro detekci sdílených site obrázků (počítáno přes všechny záložky, ne jen filtr)
+    const sharedMap = buildSharedImageMap(bookmarks);
+
+    let fixed = 0;
+    let checked = 0;
+
+    try {
+        for (const bookmark of filtered) {
+            checked++;
+            showStatus(
+                "Opravuji náhledy… " + checked + "/" + filtered.length,
+                "info"
+            );
+
+            const legacy = isLegacyScreenshotUrl(bookmark.image);
+            const generic =
+                isGenericSiteIcon(bookmark.image) || isSharedSiteImage(bookmark, sharedMap);
+            // Když máme legacy screenshot nebo generickou ikonu, vždy přegenerovat
+            const works = !legacy && !generic && (await isImageLoadable(bookmark.image));
+            if (works) continue;
+
+            try {
+                const preview = await fetchPreview(bookmark.url);
+                // Pokud i nový náhled je generický, raději ho zahodíme (favicon až při renderu)
+                let newImg = preview.image || "";
+                if (newImg && isGenericSiteIcon(newImg)) newImg = "";
+
+                if (legacy || generic || (newImg && newImg !== bookmark.image)) {
+                    await updateBookmark({
+                        ...bookmark,
+                        title: preview.title || bookmark.title,
+                        description: preview.description || bookmark.description,
+                        image: newImg,
+                        domain: preview.domain || bookmark.domain,
+                    });
+                    fixed++;
+                }
+            } catch (err) {
+                console.warn("Nelze aktualizovat náhled pro", bookmark.url, err);
+            }
+
+            // Šetrné tempo vůči microlink.io
+            await new Promise((r) => setTimeout(r, 300));
+        }
+
+        showStatus(
+            "Opraveno " + fixed + " z " + filtered.length + " záložek.",
+            "ok"
+        );
+    } finally {
+        featuredFixBtn.disabled = false;
+        featuredFixBtn.classList.remove("is-loading");
     }
 }
 
@@ -281,7 +927,7 @@ function ensureObserver() {
     observer = new IntersectionObserver(
         (entries) => {
             for (const entry of entries) {
-                if (entry.isIntersecting && renderedCount < bookmarks.length) {
+                if (entry.isIntersecting && renderedCount < filteredBookmarks().length) {
                     renderNextPage();
                 }
             }
@@ -321,15 +967,41 @@ function createTile(bookmark) {
         img.loading = "lazy";
         img.alt = "";
         img.draggable = false;
+        let triedFavicon = false;
         img.addEventListener("error", () => {
+            const fav = faviconUrl(bookmark.url);
+            if (!triedFavicon && fav && img.src !== fav) {
+                triedFavicon = true;
+                imgWrap.classList.add("bookmark-image-favicon");
+                img.src = fav;
+                return;
+            }
             imgWrap.innerHTML = "";
+            imgWrap.classList.remove("bookmark-image-favicon");
             imgWrap.classList.add("bookmark-image-fallback");
             imgWrap.textContent = "🔗";
         });
         imgWrap.appendChild(img);
     } else {
-        imgWrap.classList.add("bookmark-image-fallback");
-        imgWrap.textContent = "🔗";
+        const fav = faviconUrl(bookmark.url);
+        if (fav) {
+            const img = document.createElement("img");
+            img.src = fav;
+            img.loading = "lazy";
+            img.alt = "";
+            img.draggable = false;
+            img.addEventListener("error", () => {
+                imgWrap.innerHTML = "";
+                imgWrap.classList.remove("bookmark-image-favicon");
+                imgWrap.classList.add("bookmark-image-fallback");
+                imgWrap.textContent = "🔗";
+            });
+            imgWrap.classList.add("bookmark-image-favicon");
+            imgWrap.appendChild(img);
+        } else {
+            imgWrap.classList.add("bookmark-image-fallback");
+            imgWrap.textContent = "🔗";
+        }
     }
     link.appendChild(imgWrap);
 
@@ -371,7 +1043,38 @@ function createTile(bookmark) {
     });
     tile.appendChild(starBtn);
 
-    // Tlačítko smazání (pravý pruh přes celou výšku)
+    // Výběr záložky (přeřazení)
+    const tabSelect = document.createElement("select");
+    tabSelect.className = "bookmark-tab-select";
+    tabSelect.setAttribute("aria-label", "Přesunout do záložky");
+    const tabOptions = [
+        { value: "", label: "—" },
+        { value: "1", label: "1" },
+        { value: "2", label: "2" },
+        { value: "3", label: "3" },
+        { value: "4", label: "4" },
+        { value: "reddit", label: "R" },
+    ];
+    tabOptions.forEach((opt) => {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if ((bookmark.tab || "") === opt.value) option.selected = true;
+        tabSelect.appendChild(option);
+    });
+    tabSelect.addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const newTab = tabSelect.value || null;
+        try {
+            await updateBookmark({ ...bookmark, tab: newTab });
+        } catch (err) {
+            console.error(err);
+            alert("Chyba: " + err.message);
+        }
+    });
+    tabSelect.addEventListener("click", (e) => e.stopPropagation());
+
+    // Tlačítko smazání
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "bookmark-delete";
@@ -380,6 +1083,9 @@ function createTile(bookmark) {
     delBtn.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const label = bookmark.title || bookmark.url;
+        const ok = window.confirm("Opravdu smazat záložku?\n\n" + label);
+        if (!ok) return;
         try {
             await removeBookmark(bookmark.id);
         } catch (err) {
@@ -387,7 +1093,12 @@ function createTile(bookmark) {
             alert("Chyba při mazání: " + err.message);
         }
     });
-    tile.appendChild(delBtn);
+
+    const controls = document.createElement("div");
+    controls.className = "bookmark-controls";
+    controls.appendChild(tabSelect);
+    controls.appendChild(delBtn);
+    tile.appendChild(controls);
 
     return tile;
 }

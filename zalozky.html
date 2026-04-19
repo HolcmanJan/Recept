@@ -9,14 +9,9 @@
 <body>
     <header>
         <div class="container header-inner">
-            <div class="header-left">
-                <button id="hamburger-btn" class="hamburger" aria-label="Otevřít menu">☰</button>
-                <h1>Moje záložky</h1>
-            </div>
+            <h1>Moje záložky</h1>
         </div>
     </header>
-
-    <div id="side-menu-root"></div>
 
     <main class="container">
         <section class="bookmarks-intro">
@@ -36,6 +31,26 @@
         </form>
 
         <p id="bookmark-status" class="bookmark-status hidden"></p>
+
+        <nav class="bookmark-tabs" id="bookmark-tabs">
+            <button class="bookmark-tab active" data-tab="unassigned">Ostatní</button>
+            <button class="bookmark-tab" data-tab="1">Složka 1</button>
+            <button class="bookmark-tab" data-tab="2">Složka 2 🔒</button>
+            <button class="bookmark-tab" data-tab="3">Složka 3</button>
+            <button class="bookmark-tab" data-tab="4">Složka 4</button>
+            <button class="bookmark-tab" data-tab="reddit">Reddit</button>
+        </nav>
+
+        <section class="bookmark-featured hidden" id="bookmark-featured">
+            <div class="bookmark-featured-head">
+                <span class="bookmark-featured-title">Náhodný výběr</span>
+                <div class="bookmark-featured-actions">
+                    <button type="button" id="featured-fix" class="bookmark-featured-refresh" aria-label="Opravit chybějící náhledy" title="Opravit chybějící náhledy">🖼</button>
+                    <button type="button" id="featured-refresh" class="bookmark-featured-refresh" aria-label="Přegenerovat výběr" title="Přegenerovat výběr">↻</button>
+                </div>
+            </div>
+            <div class="bookmark-featured-grid" id="bookmark-featured-grid"></div>
+        </section>
 
         <div id="bookmarks-grid" class="bookmarks-grid"></div>
 

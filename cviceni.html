@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cvičení</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <h1>Cvičení</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Domovský pohled -->
+        <section id="view-home" class="workout-view">
+            <div class="workout-hero">
+                <button id="btn-start-workout" class="btn btn-primary btn-large">
+                    ▶ Zahájit nový trénink
+                </button>
+            </div>
+
+            <section class="workout-section">
+                <div class="section-header">
+                    <h3>Moje cviky</h3>
+                    <button id="btn-open-catalog" class="btn btn-secondary btn-sm">📖 Katalog cviků</button>
+                </div>
+                <div id="exercises-list" class="exercises-grid"></div>
+                <p id="exercises-empty" class="empty-state hidden">
+                    Dokud nezačneš trénovat, tady se nic nezobrazí.
+                </p>
+            </section>
+
+            <section class="workout-section">
+                <h3>Šablony</h3>
+                <div id="templates-list" class="templates-list"></div>
+                <p id="templates-empty" class="empty-state hidden">
+                    Zatím tu nejsou žádné šablony. Po skončení tréninku ho můžeš uložit jako šablonu.
+                </p>
+            </section>
+
+            <section class="workout-section">
+                <h3>Historie tréninků</h3>
+                <div id="history-list" class="history-list"></div>
+                <p id="history-empty" class="empty-state hidden">
+                    Zatím jsi nedokončil žádný trénink.
+                </p>
+            </section>
+        </section>
+
+        <!-- Detail cviku -->
+        <section id="view-detail" class="workout-view hidden">
+            <button id="btn-detail-back" class="btn btn-secondary btn-sm detail-back">← Zpět</button>
+
+            <div class="detail-head">
+                <div id="detail-image" class="detail-image"></div>
+                <div class="detail-info">
+                    <h2 id="detail-name">Cvik</h2>
+                    <p id="detail-group" class="detail-group"></p>
+                </div>
+            </div>
+
+            <div class="detail-upload">
+                <label for="detail-image-input" class="btn btn-secondary btn-sm">📷 Nahrát obrázek / GIF</label>
+                <input type="file" id="detail-image-input" accept="image/*" class="hidden">
+                <button id="btn-image-remove" class="btn btn-secondary btn-sm hidden">Odstranit obrázek</button>
+            </div>
+
+            <div class="detail-stats" id="detail-stats"></div>
+
+            <section class="workout-section">
+                <h3>Progres — max. váha v tréninku</h3>
+                <div class="chart-wrap">
+                    <svg id="detail-chart" class="progress-chart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+                </div>
+                <p id="detail-chart-empty" class="empty-state hidden">
+                    Ještě nejsou data pro graf. Odcvič cvik aspoň ve 2 trénincích.
+                </p>
+            </section>
+
+            <section class="workout-section">
+                <h3>Poslední tréninky</h3>
+                <div id="detail-sessions" class="detail-sessions"></div>
+            </section>
+        </section>
+
+        <!-- Katalog cviků -->
+        <section id="view-catalog" class="workout-view hidden">
+            <button id="btn-catalog-back" class="btn btn-secondary btn-sm detail-back">← Zpět</button>
+
+            <div class="catalog-head">
+                <h2>Katalog cviků</h2>
+                <button id="btn-add-custom-exercise" class="btn btn-primary btn-sm">+ Nový cvik</button>
+            </div>
+
+            <input type="text" id="catalog-search" class="picker-search" placeholder="Hledat cvik…">
+
+            <div id="catalog-groups" class="catalog-groups"></div>
+        </section>
+
+        <!-- Aktivní trénink -->
+        <section id="view-active" class="workout-view hidden">
+            <div class="workout-head">
+                <div>
+                    <input type="text" id="active-title" class="workout-title-input" value="Trénink" aria-label="Název tréninku">
+                    <p class="workout-timer" id="active-timer">00:00</p>
+                </div>
+                <div class="workout-head-actions">
+                    <button id="btn-cancel-workout" class="btn btn-secondary btn-sm">Zrušit</button>
+                    <button id="btn-finish-workout" class="btn btn-primary btn-sm">Ukončit</button>
+                </div>
+            </div>
+
+            <div class="workout-total-card">
+                <span>Celkový objem</span>
+                <strong id="active-total">0 kg</strong>
+            </div>
+
+            <div id="active-exercises" class="active-exercises"></div>
+
+            <button id="btn-add-exercise" class="btn btn-secondary btn-full">
+                + Přidat cvik
+            </button>
+        </section>
+    </main>
+
+    <!-- Výběr cviku -->
+    <div id="picker-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="picker-backdrop"></div>
+        <div class="modal-content modal-picker">
+            <div class="modal-head">
+                <h3>Vyber cvik</h3>
+                <button id="picker-close" class="close-btn" aria-label="Zavřít">×</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="picker-search" class="picker-search" placeholder="Hledat cvik…">
+                <div class="picker-filters" id="picker-filters"></div>
+                <div class="picker-list" id="picker-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vytvoření vlastního cviku -->
+    <div id="custom-exercise-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="custom-exercise-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-head">
+                <h3 id="custom-exercise-title">Nový cvik</h3>
+                <button id="custom-exercise-close" class="close-btn" aria-label="Zavřít">×</button>
+            </div>
+            <div class="modal-body">
+                <label class="form-field">
+                    <span>Název</span>
+                    <input type="text" id="custom-exercise-name" placeholder="Např. Thruster" maxlength="60">
+                </label>
+                <label class="form-field">
+                    <span>Svalová partie</span>
+                    <select id="custom-exercise-group"></select>
+                </label>
+                <label class="form-field">
+                    <span>Ikona (emoji)</span>
+                    <input type="text" id="custom-exercise-icon" placeholder="💪" maxlength="4">
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button id="custom-exercise-cancel" class="btn btn-secondary">Zrušit</button>
+                <button id="custom-exercise-save" class="btn btn-primary">Uložit cvik</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ukončení tréninku -->
+    <div id="finish-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <div class="modal-backdrop" id="finish-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-head">
+                <h3>Souhrn tréninku</h3>
+                <button id="finish-close" class="close-btn" aria-label="Zavřít">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="workout-total-card workout-total-lg">
+                    <span>Celkový objem</span>
+                    <strong id="finish-total">0 kg</strong>
+                </div>
+                <div id="finish-summary" class="finish-summary"></div>
+                <div class="finish-template">
+                    <label class="settings-toggle">
+                        <span class="settings-item-body">
+                            <strong>Uložit jako šablonu</strong>
+                            <span>Cviky a sety se uloží jako předloha pro příště.</span>
+                        </span>
+                        <input type="checkbox" id="finish-save-template">
+                    </label>
+                    <input type="text" id="finish-template-name" class="finish-template-name hidden" placeholder="Název šablony">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="finish-cancel" class="btn btn-secondary">Pokračovat v tréninku</button>
+                <button id="finish-confirm" class="btn btn-primary">Uložit trénink</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="cviceni.js"></script>
+</body>
+</html>

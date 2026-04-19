@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hry</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <h1>Hry</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="home-hero">
+            <h2>Vyber si hru</h2>
+            <p class="home-subtitle">Krátké odpočinkové hry pro jednoho i pro dva.</p>
+        </section>
+
+        <section class="tile-grid">
+            <a href="hry-kostky.html" class="tile tile-games">
+                <div class="tile-icon">🎲</div>
+                <h3>Kostky</h3>
+                <p>Farkle pro dva hráče — riskni další hod, nebo bankni body.</p>
+            </a>
+
+            <div class="tile tile-empty" aria-disabled="true">
+                <div class="tile-icon">🕹️</div>
+                <h3>Další hra</h3>
+                <p>Připravujeme…</p>
+            </div>
+
+            <div class="tile tile-empty" aria-disabled="true">
+                <div class="tile-icon">🎯</div>
+                <h3>Další hra</h3>
+                <p>Připravujeme…</p>
+            </div>
+        </section>
+
+    </main>
+
+    <script type="module" src="hry.js"></script>
+</body>
+</html>
