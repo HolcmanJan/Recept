@@ -1043,7 +1043,7 @@ body.has-bottom-nav {
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 9 / 16;
     border-radius: 12px;
     overflow: hidden;
     background: #f3f4f6;
