@@ -56,6 +56,12 @@ async function getPreview(url) {
   const hostname = parsed.hostname.replace(/^www\./, "");
   const siteImage = getSiteSpecificImage(url, parsed, hostname);
 
+  // Instagram — speciální zacházení (blokuje datacenter IP na hlavní stránce)
+  if (hostname === "instagram.com") {
+    const ig = await getInstagramPreview(parsed);
+    if (ig && ig.image) return ig;
+  }
+
   // Wikipedia — vlastní REST API
   if (/^[a-z]+\.wikipedia\.org$/i.test(parsed.hostname)) {
     const wp = await getWikipediaPreview(parsed);
@@ -146,6 +152,89 @@ async function getWikipediaPreview(parsed) {
   } catch {
     return null;
   }
+}
+
+async function getInstagramPreview(parsed) {
+  const m = parsed.pathname.match(/^\/(p|reel|tv|stories)\/([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  const shortcode = m[2];
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "text/html,*/*",
+    Referer: "https://www.google.com/",
+  };
+
+  // 1) Zkus embed endpoint — Instagram ho servíruje ochotněji
+  try {
+    const embedUrl =
+      "https://www.instagram.com/p/" + shortcode + "/embed/captioned/";
+    const res = await fetch(embedUrl, { headers, redirect: "follow" });
+    if (res.ok) {
+      const html = await res.text();
+      let image = "";
+
+      // display_url v embedded JSON datech
+      const displayMatch = html.match(/"display_url"\s*:\s*"([^"]+)"/);
+      if (displayMatch)
+        image = displayMatch[1].replace(/\\u0026/g, "&").replace(/\\/g, "");
+
+      // og:image v embed stránce
+      if (!image) {
+        const ogMatch =
+          html.match(
+            /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i
+          ) ||
+          html.match(
+            /<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i
+          );
+        if (ogMatch) image = decodeEntities(ogMatch[1]);
+      }
+
+      // EmbeddedMediaImage class
+      if (!image) {
+        const imgMatch = html.match(
+          /<img[^>]+class=["'][^"']*EmbeddedMedia[^"']*["'][^>]*src=["']([^"']+)["']/i
+        );
+        if (imgMatch) image = decodeEntities(imgMatch[1]);
+      }
+
+      // Jakýkoli scontent/cdninstagram CDN obrázek
+      if (!image) {
+        const cdnMatch = html.match(
+          /["'](https?:\/\/[^"']*?(?:scontent|cdninstagram)[^"']*?\.(?:jpg|jpeg|png|webp)[^"']*?)["']/i
+        );
+        if (cdnMatch)
+          image = cdnMatch[1].replace(/\\u0026/g, "&").replace(/\\/g, "");
+      }
+
+      let title = "";
+      const captionMatch = html.match(
+        /<div[^>]+class=["'][^"']*Caption[^"']*["'][^>]*>([\s\S]*?)<\/div>/i
+      );
+      if (captionMatch) {
+        title = captionMatch[1]
+          .replace(/<[^>]+>/g, "")
+          .trim()
+          .slice(0, 120);
+      }
+      if (!title) title = "Instagram";
+
+      if (image) {
+        return { title, description: "", image, domain: "Instagram" };
+      }
+    }
+  } catch (err) {
+    // embed failed, try next
+  }
+
+  // 2) Fallback: /media/?size=l — prohlížeč následuje redirect (funguje s cookies)
+  return {
+    title: "Instagram",
+    description: "",
+    image: "https://www.instagram.com/p/" + shortcode + "/media/?size=l",
+    domain: "Instagram",
+  };
 }
 
 // ─── HTML parsování ───
