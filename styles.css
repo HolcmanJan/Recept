@@ -1095,9 +1095,6 @@ body.has-bottom-nav {
     aspect-ratio: 16 / 9;
 }
 
-.bookmarks-grid.tab-landscape .bookmark-image {
-    aspect-ratio: 16 / 9;
-}
 
 .bookmark-tile {
     position: relative;
@@ -1138,7 +1135,7 @@ body.has-bottom-nav {
 .bookmark-image {
     flex: 0 0 56px;
     width: 56px;
-    aspect-ratio: 9 / 16;
+    min-height: 36px;
     border-radius: 6px;
     background: #f3f4f6;
     overflow: hidden;
@@ -1151,8 +1148,7 @@ body.has-bottom-nav {
 
 .bookmark-image img {
     width: 100%;
-    height: 100%;
-    object-fit: contain;
+    height: auto;
     display: block;
 }
 
