@@ -1086,6 +1086,19 @@ body.has-bottom-nav {
     margin-bottom: 1rem;
 }
 
+/* Složka 2: landscape náhledy 16:9 */
+.bookmark-featured-grid.tab-landscape {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.bookmark-featured-grid.tab-landscape .bookmark-featured-item {
+    aspect-ratio: 16 / 9;
+}
+
+.bookmarks-grid.tab-landscape .bookmark-image {
+    aspect-ratio: 16 / 9;
+}
+
 .bookmark-tile {
     position: relative;
     border-radius: 14px;
