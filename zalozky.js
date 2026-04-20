@@ -13,7 +13,11 @@ import { initNavigation } from "./navigation.js";
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const FEATURED_COUNT = 8;
-const PREVIEW_WORKER = "https://link-preview.recept.workers.dev/?url=";
+const PREVIEW_API = "https://api.microlink.io/?url=";
+const PROXY_ENDPOINTS = [
+    "https://corsproxy.io/?url=",
+    "https://api.allorigins.win/raw?url=",
+];
 const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
 const TAB_2_PASSWORD = "abc129";
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
@@ -323,30 +327,258 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
-// Vše řeší vlastní Cloudflare Worker — stáhne HTML, parsuje og:image, JSON-LD atd.
+// Řetěz: site-specific → microlink → og:image a další z HTML (přes proxy) → Wikipedia API
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
 
+    let title = "";
+    let description = "";
+    let image = "";
+    let domain = hostname;
+
+    // 0) Site-specific: YouTube, Imgur — okamžité, bez sítě
+    const siteImg = getSiteSpecificImage(url);
+    if (siteImg) image = siteImg;
+
+    // 1) microlink.io
     try {
-        const res = await fetch(PREVIEW_WORKER + encodeURIComponent(url));
-        if (!res.ok) throw new Error("Worker HTTP " + res.status);
-        const data = await res.json();
-        return {
-            title: data.title || hostname,
-            description: data.description || "",
-            image: data.image || "",
-            domain: data.domain || hostname,
-        };
+        const res = await fetch(PREVIEW_API + encodeURIComponent(url));
+        if (res.ok) {
+            const json = await res.json();
+            if (json.status === "success" && json.data) {
+                const d = json.data;
+                title = d.title || "";
+                description = d.description || "";
+                if (!image && d.image && d.image.url) image = d.image.url;
+                if (d.publisher) domain = d.publisher;
+            }
+        }
     } catch (err) {
-        console.warn("Preview worker selhal:", err && err.message);
-        return {
-            title: hostname,
-            description: "",
-            image: "",
-            domain: hostname,
-        };
+        console.warn("microlink selhal:", err && err.message);
     }
+
+    // 2) Fallback: parsování meta/link/JSON-LD z HTML přes CORS proxy
+    if (!image || !title) {
+        const og = await fetchOpenGraph(url);
+        if (og) {
+            if (!image && og.image) image = og.image;
+            if (!title && og.title) title = og.title;
+            if (!description && og.description) description = og.description;
+            if (og.siteName && domain === hostname) domain = og.siteName;
+        }
+    }
+
+    // 3) Wikipedia REST API
+    if (!image) {
+        const wp = await getWikipediaImage(url);
+        if (wp) image = wp;
+    }
+
+    return {
+        title: title || hostname,
+        description: description || "",
+        image: image || "",
+        domain: domain || hostname,
+    };
+}
+
+function getSiteSpecificImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const h = parsed.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (h === "youtube.com" || h === "m.youtube.com" || h === "music.youtube.com") {
+        const v = parsed.searchParams.get("v");
+        if (v) return "https://img.youtube.com/vi/" + encodeURIComponent(v) + "/hqdefault.jpg";
+        const seg = parsed.pathname.split("/").filter(Boolean);
+        if ((seg[0] === "shorts" || seg[0] === "embed") && seg[1])
+            return "https://img.youtube.com/vi/" + encodeURIComponent(seg[1]) + "/hqdefault.jpg";
+    }
+    if (h === "youtu.be") {
+        const id = parsed.pathname.slice(1).split("/")[0];
+        if (id) return "https://img.youtube.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
+    }
+    if (h === "i.imgur.com") return url;
+
+    return "";
+}
+
+async function getWikipediaImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const m = parsed.hostname.match(/^([a-z]+)\.wikipedia\.org$/i);
+    if (!m) return "";
+    const pm = parsed.pathname.match(/^\/wiki\/(.+)$/);
+    if (!pm) return "";
+    try {
+        const res = await fetch(
+            "https://" + m[1] + ".wikipedia.org/api/rest_v1/page/summary/" + pm[1]
+        );
+        if (!res.ok) return "";
+        const data = await res.json();
+        return (data.thumbnail && data.thumbnail.source) || "";
+    } catch (_) {
+        return "";
+    }
+}
+
+async function fetchOpenGraph(url) {
+    let html = "";
+    for (const proxy of PROXY_ENDPOINTS) {
+        try {
+            const res = await fetch(proxy + encodeURIComponent(url));
+            if (!res.ok) continue;
+            const text = await res.text();
+            if (text && text.length > 200 && /<html|<head|<meta/i.test(text)) {
+                html = text;
+                break;
+            }
+        } catch (_) {}
+    }
+    if (!html) return null;
+
+    const parsed = safeParseUrl(url);
+    const origin = parsed ? parsed.origin : "";
+
+    const metaContent = (attr, value) => {
+        const esc = escapeRegex(value);
+        const re1 = new RegExp(
+            '<meta[^>]+' + attr + '=["\']' + esc + '["\'][^>]*content=["\']([^"\']+)["\']',
+            "i"
+        );
+        const re2 = new RegExp(
+            '<meta[^>]+content=["\']([^"\']+)["\'][^>]*' + attr + '=["\']' + esc + '["\']',
+            "i"
+        );
+        const m = html.match(re1) || html.match(re2);
+        return m ? decodeEntities(m[1].trim()) : "";
+    };
+
+    let image =
+        metaContent("property", "og:image") ||
+        metaContent("name", "og:image") ||
+        metaContent("property", "og:image:url") ||
+        metaContent("name", "twitter:image") ||
+        metaContent("property", "twitter:image") ||
+        metaContent("name", "twitter:image:src") ||
+        metaContent("itemprop", "image") ||
+        linkHref(html, "image_src") ||
+        extractJsonLdImage(html) ||
+        findFirstMeaningfulImage(html);
+    if (image) image = resolveUrl(image, origin);
+
+    let title =
+        metaContent("property", "og:title") ||
+        metaContent("name", "twitter:title");
+    if (!title) {
+        const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (t) title = decodeEntities(t[1].trim());
+    }
+
+    const description =
+        metaContent("property", "og:description") ||
+        metaContent("name", "description") ||
+        metaContent("name", "twitter:description");
+
+    const siteName = metaContent("property", "og:site_name");
+
+    return { title, description, image, siteName };
+}
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function linkHref(html, rel) {
+    const esc = escapeRegex(rel);
+    const re1 = new RegExp(
+        '<link[^>]+rel=["\']' + esc + '["\'][^>]*href=["\']([^"\']+)["\']',
+        "i"
+    );
+    const re2 = new RegExp(
+        '<link[^>]+href=["\']([^"\']+)["\'][^>]*rel=["\']' + esc + '["\']',
+        "i"
+    );
+    const m = html.match(re1) || html.match(re2);
+    return m ? decodeEntities(m[1].trim()) : "";
+}
+
+function extractJsonLdImage(html) {
+    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+        const raw = m[1].trim();
+        if (!raw) continue;
+        try {
+            const parsed = JSON.parse(raw);
+            const img = pickImageFromJsonLd(parsed);
+            if (img) return img;
+        } catch (_) {}
+    }
+    return "";
+}
+
+function pickImageFromJsonLd(node) {
+    if (!node || typeof node !== "object") return "";
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const r = pickImageFromJsonLd(item);
+            if (r) return r;
+        }
+        return "";
+    }
+    if (node.image) {
+        if (typeof node.image === "string") return node.image;
+        if (Array.isArray(node.image)) {
+            for (const x of node.image) {
+                if (typeof x === "string") return x;
+                if (x && typeof x === "object" && x.url) return x.url;
+            }
+        }
+        if (typeof node.image === "object" && node.image.url) return node.image.url;
+    }
+    if (node["@graph"]) return pickImageFromJsonLd(node["@graph"]);
+    return "";
+}
+
+function findFirstMeaningfulImage(html) {
+    const bodyIdx = html.search(/<body[\s>]/i);
+    const start = bodyIdx === -1 ? 0 : bodyIdx;
+    const body = html.slice(start);
+    const re = /<img\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(body)) !== null) {
+        const attrs = m[1];
+        const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+        if (!srcMatch) continue;
+        const src = srcMatch[1];
+        if (!src || src.startsWith("data:")) continue;
+        if (/1x1|pixel|spacer|blank|tracking|analytics|beacon|sprite/i.test(src)) continue;
+        const w = parseInt((attrs.match(/\bwidth=["']?(\d+)/i) || [])[1] || "0", 10);
+        const h = parseInt((attrs.match(/\bheight=["']?(\d+)/i) || [])[1] || "0", 10);
+        if ((w > 0 && w < 120) || (h > 0 && h < 120)) continue;
+        return decodeEntities(src);
+    }
+    return "";
+}
+
+function resolveUrl(href, origin) {
+    if (/^https?:\/\//i.test(href)) return href;
+    if (href.startsWith("//")) return "https:" + href;
+    if (href.startsWith("/") && origin) return origin + href;
+    return href;
+}
+
+function decodeEntities(str) {
+    return str
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&nbsp;/g, " ");
 }
 
 // Google favicon služba — spolehlivý poslední fallback při selhání obrázku
