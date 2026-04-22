@@ -28,6 +28,7 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
+let _patchBookmarkId = null; // ID záložky pro in-place patch místo resetRender
 let activeTab = "unassigned";
 let tab2Unlocked = false;
 
@@ -266,7 +267,13 @@ initNavigation("zalozky", (user) => {
             (snapshot) => {
                 bookmarks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
                 sortBookmarks(bookmarks);
-                resetRender();
+                const patchId = _patchBookmarkId;
+                _patchBookmarkId = null;
+                if (patchId) {
+                    patchTileById(patchId);
+                } else {
+                    resetRender();
+                }
                 // Auto-save z bookmarkletu — až víme kdo je přihlášen
                 if (BM_PARAMS && !bmAutoSaveDone) {
                     bmAutoSaveDone = true;
@@ -747,6 +754,7 @@ async function regenBookmarkPreview(bookmark, btn) {
     try {
         const preview = await fetchPreview(bookmark.url);
         const newImg = preview.image || "";
+        _patchBookmarkId = bookmark.id; // onSnapshot použije patch místo resetRender
         await updateBookmark({
             ...bookmark,
             title:       preview.title       || bookmark.title,
@@ -1300,6 +1308,7 @@ function disconnectObserver() {
 function createTile(bookmark) {
     const tile = document.createElement("article");
     tile.className = "bookmark-tile";
+    tile.dataset.bookmarkId = bookmark.id;
     if (bookmark.favorite) tile.classList.add("is-favorite");
 
     // Klikatelný odkaz
@@ -1468,4 +1477,13 @@ function createTile(bookmark) {
     tile.appendChild(controls);
 
     return tile;
+}
+
+// Nahradí jeden tile na místě bez resetRender (zachová scroll pozici)
+function patchTileById(id) {
+    const bm = bookmarks.find((b) => b.id === id);
+    if (!bm) return;
+    const old = gridEl.querySelector(`[data-bookmark-id="${id}"]`);
+    if (!old) return;
+    old.replaceWith(createTile(bm));
 }
