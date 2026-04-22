@@ -13,7 +13,11 @@ import { initNavigation } from "./navigation.js";
 const STORAGE_KEY = "recept.bookmarks.v1";
 const PAGE_SIZE = 12;
 const FEATURED_COUNT = 8;
-const PREVIEW_WORKER = "https://link-preview.recept.workers.dev/?url=";
+const PREVIEW_API = "https://api.microlink.io/?url=";
+const PROXY_ENDPOINTS = [
+    "https://corsproxy.io/?url=",
+    "https://api.allorigins.win/raw?url=",
+];
 const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
 const TAB_2_PASSWORD = "abc129";
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
@@ -49,6 +53,50 @@ featuredRefreshBtn.addEventListener("click", () => {
 featuredFixBtn.addEventListener("click", () => {
     fixBrokenPreviews();
 });
+
+// ----- Bookmarklet -----
+// Kód bookmarkletu — čte meta tagy přímo ze stránky (žádný CORS).
+// Když je stránka otevřena jako popup (window.opener existuje), pošle data přes
+// postMessage a zavře se. Jinak otevře novou záložku s URL záložkové aplikace.
+function buildBookmarkletHref() {
+    const appUrl = location.origin + location.pathname;
+    const appOrigin = location.origin;
+    const code = `(function(){
+function g(a){var e=document.querySelector('meta[property="'+a+'"],meta[name="'+a+'"]');return e?e.getAttribute('content')||'':(a==='og:title'?document.title||'':'');}
+var u=encodeURIComponent;
+var t=g('og:title')||g('twitter:title')||document.title||'';
+var d=g('og:description')||g('twitter:description')||g('description')||'';
+var i=g('og:image')||g('og:image:url')||g('twitter:image')||'';
+var s=g('og:site_name')||location.hostname.replace(/^www\./,'');
+if(window.opener&&!window.opener.closed){
+  try{window.opener.postMessage({type:'bookmarklet-data',url:location.href,title:t,desc:d,image:i,domain:s},'${appOrigin}');}catch(e){}
+  setTimeout(function(){window.close();},200);
+}else{
+  window.open('${appUrl}?bm_url='+u(location.href)+'&bm_title='+u(t)+'&bm_desc='+u(d)+'&bm_image='+u(i)+'&bm_domain='+u(s));
+}
+})();`;
+    return "javascript:" + code.replace(/\n\s*/g, "");
+}
+
+document.getElementById("bookmarklet-link").href = buildBookmarkletHref();
+
+// Pokud byla stránka otevřena bookmarkletem, zpracuj parametry a ulož záložku
+const BM_PARAMS = (() => {
+    const p = new URLSearchParams(location.search);
+    if (!p.has("bm_url")) return null;
+    return {
+        url:    p.get("bm_url")    || "",
+        title:  p.get("bm_title")  || "",
+        desc:   p.get("bm_desc")   || "",
+        image:  p.get("bm_image")  || "",
+        domain: p.get("bm_domain") || "",
+    };
+})();
+
+// Odstraň parametry z URL baru (bez přesměrování)
+if (BM_PARAMS) {
+    history.replaceState(null, "", location.pathname);
+}
 
 // ----- Záložkové přepínače -----
 tabsEl.addEventListener("click", (e) => {
@@ -209,6 +257,8 @@ function timeAgo(unixSec) {
 }
 
 // ----- Inicializace navigace + reakce na změnu uživatele -----
+let bmAutoSaveDone = false;
+
 initNavigation("zalozky", (user) => {
     currentUser = user;
 
@@ -225,6 +275,11 @@ initNavigation("zalozky", (user) => {
                 bookmarks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
                 sortBookmarks(bookmarks);
                 resetRender();
+                // Auto-save z bookmarkletu — až víme kdo je přihlášen
+                if (BM_PARAMS && !bmAutoSaveDone) {
+                    bmAutoSaveDone = true;
+                    saveBookmarkletData(BM_PARAMS);
+                }
             },
             (err) => {
                 console.error("Firestore chyba:", err);
@@ -234,6 +289,10 @@ initNavigation("zalozky", (user) => {
     } else {
         bookmarks = loadLocal();
         resetRender();
+        if (BM_PARAMS && !bmAutoSaveDone) {
+            bmAutoSaveDone = true;
+            saveBookmarkletData(BM_PARAMS);
+        }
     }
 });
 
@@ -323,30 +382,258 @@ async function removeBookmark(id) {
 }
 
 // ----- Náhled / obrázek -----
-// Vše řeší vlastní Cloudflare Worker — stáhne HTML, parsuje og:image, JSON-LD atd.
+// Řetěz: site-specific → microlink → og:image a další z HTML (přes proxy) → Wikipedia API
 async function fetchPreview(url) {
     const parsed = safeParseUrl(url);
     const hostname = parsed ? parsed.hostname : url;
 
+    let title = "";
+    let description = "";
+    let image = "";
+    let domain = hostname;
+
+    // 0) Site-specific: YouTube, Imgur — okamžité, bez sítě
+    const siteImg = getSiteSpecificImage(url);
+    if (siteImg) image = siteImg;
+
+    // 1) microlink.io
     try {
-        const res = await fetch(PREVIEW_WORKER + encodeURIComponent(url));
-        if (!res.ok) throw new Error("Worker HTTP " + res.status);
-        const data = await res.json();
-        return {
-            title: data.title || hostname,
-            description: data.description || "",
-            image: data.image || "",
-            domain: data.domain || hostname,
-        };
+        const res = await fetch(PREVIEW_API + encodeURIComponent(url));
+        if (res.ok) {
+            const json = await res.json();
+            if (json.status === "success" && json.data) {
+                const d = json.data;
+                title = d.title || "";
+                description = d.description || "";
+                if (!image && d.image && d.image.url) image = d.image.url;
+                if (d.publisher) domain = d.publisher;
+            }
+        }
     } catch (err) {
-        console.warn("Preview worker selhal:", err && err.message);
-        return {
-            title: hostname,
-            description: "",
-            image: "",
-            domain: hostname,
-        };
+        console.warn("microlink selhal:", err && err.message);
     }
+
+    // 2) Fallback: parsování meta/link/JSON-LD z HTML přes CORS proxy
+    if (!image || !title) {
+        const og = await fetchOpenGraph(url);
+        if (og) {
+            if (!image && og.image) image = og.image;
+            if (!title && og.title) title = og.title;
+            if (!description && og.description) description = og.description;
+            if (og.siteName && domain === hostname) domain = og.siteName;
+        }
+    }
+
+    // 3) Wikipedia REST API
+    if (!image) {
+        const wp = await getWikipediaImage(url);
+        if (wp) image = wp;
+    }
+
+    return {
+        title: title || hostname,
+        description: description || "",
+        image: image || "",
+        domain: domain || hostname,
+    };
+}
+
+function getSiteSpecificImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const h = parsed.hostname.toLowerCase().replace(/^www\./, "");
+
+    if (h === "youtube.com" || h === "m.youtube.com" || h === "music.youtube.com") {
+        const v = parsed.searchParams.get("v");
+        if (v) return "https://img.youtube.com/vi/" + encodeURIComponent(v) + "/hqdefault.jpg";
+        const seg = parsed.pathname.split("/").filter(Boolean);
+        if ((seg[0] === "shorts" || seg[0] === "embed") && seg[1])
+            return "https://img.youtube.com/vi/" + encodeURIComponent(seg[1]) + "/hqdefault.jpg";
+    }
+    if (h === "youtu.be") {
+        const id = parsed.pathname.slice(1).split("/")[0];
+        if (id) return "https://img.youtube.com/vi/" + encodeURIComponent(id) + "/hqdefault.jpg";
+    }
+    if (h === "i.imgur.com") return url;
+
+    return "";
+}
+
+async function getWikipediaImage(url) {
+    const parsed = safeParseUrl(url);
+    if (!parsed) return "";
+    const m = parsed.hostname.match(/^([a-z]+)\.wikipedia\.org$/i);
+    if (!m) return "";
+    const pm = parsed.pathname.match(/^\/wiki\/(.+)$/);
+    if (!pm) return "";
+    try {
+        const res = await fetch(
+            "https://" + m[1] + ".wikipedia.org/api/rest_v1/page/summary/" + pm[1]
+        );
+        if (!res.ok) return "";
+        const data = await res.json();
+        return (data.thumbnail && data.thumbnail.source) || "";
+    } catch (_) {
+        return "";
+    }
+}
+
+async function fetchOpenGraph(url) {
+    let html = "";
+    for (const proxy of PROXY_ENDPOINTS) {
+        try {
+            const res = await fetch(proxy + encodeURIComponent(url));
+            if (!res.ok) continue;
+            const text = await res.text();
+            if (text && text.length > 200 && /<html|<head|<meta/i.test(text)) {
+                html = text;
+                break;
+            }
+        } catch (_) {}
+    }
+    if (!html) return null;
+
+    const parsed = safeParseUrl(url);
+    const origin = parsed ? parsed.origin : "";
+
+    const metaContent = (attr, value) => {
+        const esc = escapeRegex(value);
+        const re1 = new RegExp(
+            '<meta[^>]+' + attr + '=["\']' + esc + '["\'][^>]*content=["\']([^"\']+)["\']',
+            "i"
+        );
+        const re2 = new RegExp(
+            '<meta[^>]+content=["\']([^"\']+)["\'][^>]*' + attr + '=["\']' + esc + '["\']',
+            "i"
+        );
+        const m = html.match(re1) || html.match(re2);
+        return m ? decodeEntities(m[1].trim()) : "";
+    };
+
+    let image =
+        metaContent("property", "og:image") ||
+        metaContent("name", "og:image") ||
+        metaContent("property", "og:image:url") ||
+        metaContent("name", "twitter:image") ||
+        metaContent("property", "twitter:image") ||
+        metaContent("name", "twitter:image:src") ||
+        metaContent("itemprop", "image") ||
+        linkHref(html, "image_src") ||
+        extractJsonLdImage(html) ||
+        findFirstMeaningfulImage(html);
+    if (image) image = resolveUrl(image, origin);
+
+    let title =
+        metaContent("property", "og:title") ||
+        metaContent("name", "twitter:title");
+    if (!title) {
+        const t = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (t) title = decodeEntities(t[1].trim());
+    }
+
+    const description =
+        metaContent("property", "og:description") ||
+        metaContent("name", "description") ||
+        metaContent("name", "twitter:description");
+
+    const siteName = metaContent("property", "og:site_name");
+
+    return { title, description, image, siteName };
+}
+
+function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function linkHref(html, rel) {
+    const esc = escapeRegex(rel);
+    const re1 = new RegExp(
+        '<link[^>]+rel=["\']' + esc + '["\'][^>]*href=["\']([^"\']+)["\']',
+        "i"
+    );
+    const re2 = new RegExp(
+        '<link[^>]+href=["\']([^"\']+)["\'][^>]*rel=["\']' + esc + '["\']',
+        "i"
+    );
+    const m = html.match(re1) || html.match(re2);
+    return m ? decodeEntities(m[1].trim()) : "";
+}
+
+function extractJsonLdImage(html) {
+    const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m;
+    while ((m = re.exec(html)) !== null) {
+        const raw = m[1].trim();
+        if (!raw) continue;
+        try {
+            const parsed = JSON.parse(raw);
+            const img = pickImageFromJsonLd(parsed);
+            if (img) return img;
+        } catch (_) {}
+    }
+    return "";
+}
+
+function pickImageFromJsonLd(node) {
+    if (!node || typeof node !== "object") return "";
+    if (Array.isArray(node)) {
+        for (const item of node) {
+            const r = pickImageFromJsonLd(item);
+            if (r) return r;
+        }
+        return "";
+    }
+    if (node.image) {
+        if (typeof node.image === "string") return node.image;
+        if (Array.isArray(node.image)) {
+            for (const x of node.image) {
+                if (typeof x === "string") return x;
+                if (x && typeof x === "object" && x.url) return x.url;
+            }
+        }
+        if (typeof node.image === "object" && node.image.url) return node.image.url;
+    }
+    if (node["@graph"]) return pickImageFromJsonLd(node["@graph"]);
+    return "";
+}
+
+function findFirstMeaningfulImage(html) {
+    const bodyIdx = html.search(/<body[\s>]/i);
+    const start = bodyIdx === -1 ? 0 : bodyIdx;
+    const body = html.slice(start);
+    const re = /<img\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(body)) !== null) {
+        const attrs = m[1];
+        const srcMatch = attrs.match(/\bsrc=["']([^"']+)["']/i);
+        if (!srcMatch) continue;
+        const src = srcMatch[1];
+        if (!src || src.startsWith("data:")) continue;
+        if (/1x1|pixel|spacer|blank|tracking|analytics|beacon|sprite/i.test(src)) continue;
+        const w = parseInt((attrs.match(/\bwidth=["']?(\d+)/i) || [])[1] || "0", 10);
+        const h = parseInt((attrs.match(/\bheight=["']?(\d+)/i) || [])[1] || "0", 10);
+        if ((w > 0 && w < 120) || (h > 0 && h < 120)) continue;
+        return decodeEntities(src);
+    }
+    return "";
+}
+
+function resolveUrl(href, origin) {
+    if (/^https?:\/\//i.test(href)) return href;
+    if (href.startsWith("//")) return "https:" + href;
+    if (href.startsWith("/") && origin) return origin + href;
+    return href;
+}
+
+function decodeEntities(str) {
+    return str
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&#x27;/gi, "'")
+        .replace(/&nbsp;/g, " ");
 }
 
 // Google favicon služba — spolehlivý poslední fallback při selhání obrázku
@@ -408,6 +695,118 @@ async function handleSubmit(event) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Přidat";
     }
+}
+
+// Uloží nebo aktualizuje záložku přijatou přes bookmarklet.
+// Data pocházejí přímo z meta tagů stránky — žádný proxy, žádné limity.
+async function saveBookmarkletData({ url, title, desc, image, domain }) {
+    if (!url) return;
+    const parsed = safeParseUrl(url);
+    if (!parsed) return;
+
+    // Zkus najít existující záložku se stejnou URL
+    const existing = bookmarks.find((b) => b.url === url);
+
+    if (existing) {
+        showStatus("Aktualizuji náhled záložky…", "info");
+        try {
+            await updateBookmark({
+                ...existing,
+                title:       title  || existing.title,
+                description: desc   || existing.description,
+                image:       image  || existing.image,
+                domain:      domain || existing.domain,
+            });
+            showStatus("✓ Náhled záložky aktualizován ze stránky.", "ok");
+        } catch (err) {
+            console.error(err);
+            showStatus("Chyba při aktualizaci: " + err.message, "error");
+        }
+    } else {
+        showStatus("Ukládám záložku ze stránky…", "info");
+        const bookmark = {
+            id: generateId(),
+            url,
+            title:       title  || parsed.hostname,
+            description: desc   || "",
+            image:       image  || "",
+            domain:      domain || parsed.hostname,
+            favorite: false,
+            tab: null,
+            createdAt: Date.now(),
+        };
+        try {
+            await persistBookmark(bookmark);
+            showStatus("✓ Záložka uložena s náhledem ze stránky.", "ok");
+        } catch (err) {
+            console.error(err);
+            showStatus("Chyba při ukládání: " + err.message, "error");
+        }
+    }
+}
+
+// Posluchač zpráv od bookmarkletu spuštěného v popupu (window.opener → postMessage)
+let _regenMsgHandler = null;
+
+window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin) return;
+    const data = e.data;
+    if (!data || data.type !== "bookmarklet-data") return;
+    if (_regenMsgHandler) {
+        _regenMsgHandler(data);
+        _regenMsgHandler = null;
+    }
+});
+
+// Otevře URL záložky v popupu a čeká, až uživatel klikne na bookmarklet v liště.
+// Bookmarklet rozpozná window.opener a pošle data přes postMessage → popup se zavře.
+async function regenBookmarkPreview(bookmark, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "⏳";
+
+    const popup = window.open(bookmark.url, "_blank", "width=950,height=720,noopener=no");
+    if (!popup) {
+        alert("Prohlížeč zablokoval otevření popupu.\nPovol popupy pro tuto stránku a zkus to znovu.");
+        btn.disabled = false;
+        btn.textContent = "🔄";
+        return;
+    }
+
+    showStatus("Stránka se otevřela. Klikni na 📌 v záložkové liště prohlížeče.", "info");
+
+    const data = await new Promise((resolve) => {
+        _regenMsgHandler = resolve;
+
+        // Sleduj zavření popupu
+        const poll = setInterval(() => {
+            if (popup.closed) {
+                clearInterval(poll);
+                if (_regenMsgHandler === resolve) {
+                    _regenMsgHandler = null;
+                    resolve(null);
+                }
+            }
+        }, 500);
+    });
+
+    btn.disabled = false;
+    btn.textContent = "🔄";
+
+    if (!data) {
+        showStatus("Popup byl zavřen bez přenesení dat.", "error");
+        return;
+    }
+
+    // Popup poslal data — uložit přes saveBookmarkletData
+    try { popup.close(); } catch {}
+    await saveBookmarkletData({
+        url:    data.url    || bookmark.url,
+        title:  data.title  || "",
+        desc:   data.desc   || "",
+        image:  data.image  || "",
+        domain: data.domain || "",
+    });
 }
 
 function showStatus(text, type) {
@@ -1093,8 +1492,22 @@ function createTile(bookmark) {
         }
     });
 
+    // Tlačítko přegenerování náhledu přes bookmarklet v popupu
+    const regenBtn = document.createElement("button");
+    regenBtn.type = "button";
+    regenBtn.className = "bookmark-regen";
+    regenBtn.setAttribute("aria-label", "Přegenerovat náhled");
+    regenBtn.title = "Přegenerovat náhled (otevře stránku, klikni na 📌 v liště)";
+    regenBtn.textContent = "🔄";
+    regenBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        regenBookmarkPreview(bookmark, regenBtn);
+    });
+
     const controls = document.createElement("div");
     controls.className = "bookmark-controls";
+    controls.appendChild(regenBtn);
     controls.appendChild(tabSelect);
     controls.appendChild(delBtn);
     tile.appendChild(controls);
