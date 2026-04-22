@@ -1019,11 +1019,26 @@ body.has-bottom-nav {
 }
 
 .bookmark-status {
-    margin: 0 0 1rem;
-    padding: 0.5rem 0.85rem;
+    position: fixed;
+    top: 0.75rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 900;
+    margin: 0;
+    padding: 0.5rem 1.2rem;
     border-radius: 8px;
     font-size: 0.9rem;
     border: 1px solid transparent;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    max-width: min(500px, 90vw);
+    text-align: center;
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.bookmark-status.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(-1rem);
 }
 
 .bookmark-status-info {
