@@ -4,6 +4,8 @@ import { db } from "./firebase-init.js";
 import {
     collection,
     doc,
+    getDoc,
+    getDocs,
     setDoc,
     deleteDoc,
     onSnapshot,
@@ -20,6 +22,204 @@ const PROXY_ENDPOINTS = [
 ];
 const TABS = ["unassigned", "1", "2", "3", "4", "reddit"];
 const TAB_2_PASSWORD = "abc129";
+
+// ===== Šifrování (Web Crypto API: PBKDF2 + AES-GCM) =====
+
+let encKey = null; // CryptoKey po odemčení, jinak null (= šifrování vypnuto)
+
+function b64Enc(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function b64Dec(s) {
+    return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+}
+
+async function deriveEncKey(password, saltHex) {
+    const km = await crypto.subtle.importKey(
+        "raw", new TextEncoder().encode(password),
+        { name: "PBKDF2" }, false, ["deriveKey"]
+    );
+    const salt = Uint8Array.from(saltHex.match(/.{2}/g), (x) => parseInt(x, 16));
+    return crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt, iterations: 200_000, hash: "SHA-256" },
+        km,
+        { name: "AES-GCM", length: 256 },
+        false, ["encrypt", "decrypt"]
+    );
+}
+
+async function aeEncrypt(key, text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv }, key,
+        new TextEncoder().encode(text)
+    );
+    return b64Enc(iv) + "." + b64Enc(ct);
+}
+
+async function aeDecrypt(key, token) {
+    const p = token.indexOf(".");
+    const plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: b64Dec(token.slice(0, p)) },
+        key, b64Dec(token.slice(p + 1))
+    );
+    return new TextDecoder().decode(plain);
+}
+
+async function encryptBookmark(bm) {
+    if (!encKey) return bm;
+    const payload = JSON.stringify({
+        url: bm.url || "", title: bm.title || "",
+        description: bm.description || "",
+        image: bm.image || "", domain: bm.domain || "",
+    });
+    return {
+        id: bm.id,
+        createdAt: bm.createdAt || Date.now(),
+        tab: bm.tab || null,
+        favorite: bm.favorite || false,
+        _enc: await aeEncrypt(encKey, payload),
+    };
+}
+
+async function decryptBookmark(raw) {
+    if (!raw._enc) return raw; // nešifrovaná (legacy) záložka
+    if (!encKey) return raw;   // nemáme klíč — zobraz prázdnou záložku
+    try {
+        const s = JSON.parse(await aeDecrypt(encKey, raw._enc));
+        return {
+            id: raw.id, createdAt: raw.createdAt,
+            tab: raw.tab || null, favorite: raw.favorite || false,
+            ...s,
+        };
+    } catch {
+        return null; // špatný klíč nebo poškozená data
+    }
+}
+
+// ----- Inicializace šifrování -----
+
+async function initEncryption() {
+    if (!currentUser) return;
+    const metaRef = doc(db, "users", currentUser.uid, "meta", "enc");
+    let meta = null;
+    try {
+        const snap = await getDoc(metaRef);
+        if (snap.exists()) meta = snap.data();
+    } catch (err) {
+        console.error("Nelze načíst enc meta:", err);
+        return;
+    }
+
+    if (meta && meta.enabled && meta.salt) {
+        await showEncDialog({ mode: "unlock", salt: meta.salt, verify: meta.verify });
+    } else if (!meta) {
+        const result = await showEncDialog({ mode: "setup" });
+        if (result) {
+            await setDoc(metaRef, { enabled: true, salt: result.salt, verify: result.verify });
+            await migrateBookmarks();
+        } else {
+            await setDoc(metaRef, { enabled: false });
+        }
+    }
+    // meta.enabled === false → šifrování trvale vypnuto, nic nedělat
+}
+
+async function migrateBookmarks() {
+    if (!currentUser || !encKey) return;
+    const colRef = collection(db, "users", currentUser.uid, "bookmarks");
+    const snap = await getDocs(colRef);
+    const unenc = snap.docs.filter((d) => !d.data()._enc);
+    await Promise.all(unenc.map(async (d) => {
+        const bm = { id: d.id, ...d.data() };
+        const enc = await encryptBookmark(bm);
+        const { id, ...data } = enc;
+        await setDoc(doc(db, "users", currentUser.uid, "bookmarks", id), data);
+    }));
+}
+
+function showEncDialog({ mode, salt, verify }) {
+    return new Promise((resolve) => {
+        const overlay  = document.getElementById("enc-overlay");
+        const titleEl  = document.getElementById("enc-title");
+        const descEl   = document.getElementById("enc-desc");
+        const pwdEl    = document.getElementById("enc-password");
+        const errEl    = document.getElementById("enc-error");
+        const submitBtn = document.getElementById("enc-submit");
+        const skipBtn  = document.getElementById("enc-skip");
+
+        pwdEl.value = "";
+        errEl.classList.add("hidden");
+        overlay.classList.remove("hidden");
+
+        if (mode === "setup") {
+            titleEl.textContent = "Šifrování záložek";
+            descEl.textContent  = "Nastav heslo pro šifrování záložek v databázi. Heslo nikde neukládáme — bez něj záložky nepůjdou zobrazit.";
+            submitBtn.textContent = "Nastavit heslo";
+            skipBtn.classList.remove("hidden");
+        } else {
+            titleEl.textContent = "Záložky jsou zašifrované";
+            descEl.textContent  = "Zadej heslo pro odemčení záložek.";
+            submitBtn.textContent = "Odemknout";
+            skipBtn.classList.add("hidden");
+        }
+
+        setTimeout(() => pwdEl.focus(), 50);
+
+        async function onSubmit() {
+            const pwd = pwdEl.value.trim();
+            if (!pwd) return;
+            submitBtn.disabled = true;
+            errEl.classList.add("hidden");
+            try {
+                let useSalt   = salt;
+                let useVerify = verify;
+
+                if (mode === "setup") {
+                    const bytes = crypto.getRandomValues(new Uint8Array(16));
+                    useSalt = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+                }
+
+                const key = await deriveEncKey(pwd, useSalt);
+
+                if (mode === "unlock") {
+                    await aeDecrypt(key, useVerify); // hodí výjimku při špatném hesle
+                } else {
+                    useVerify = await aeEncrypt(key, "ok");
+                }
+
+                encKey = key;
+                cleanup();
+                overlay.classList.add("hidden");
+                resolve(mode === "setup" ? { salt: useSalt, verify: useVerify } : true);
+            } catch {
+                submitBtn.disabled = false;
+                errEl.textContent = mode === "unlock" ? "Nesprávné heslo." : "Chyba při generování klíče.";
+                errEl.classList.remove("hidden");
+                pwdEl.select();
+            }
+        }
+
+        function onSkip() {
+            cleanup();
+            overlay.classList.add("hidden");
+            resolve(false);
+        }
+
+        function onKeydown(e) { if (e.key === "Enter") onSubmit(); }
+
+        function cleanup() {
+            submitBtn.removeEventListener("click", onSubmit);
+            skipBtn.removeEventListener("click", onSkip);
+            pwdEl.removeEventListener("keydown", onKeydown);
+            submitBtn.disabled = false;
+        }
+
+        submitBtn.addEventListener("click", onSubmit);
+        skipBtn.addEventListener("click", onSkip);
+        pwdEl.addEventListener("keydown", onKeydown);
+    });
+}
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
 
 // ----- Stav -----
@@ -28,6 +228,7 @@ let currentUser = null;
 let unsubscribeBookmarks = null;
 let renderedCount = 0;
 let observer = null;
+let _patchBookmarkId = null; // ID záložky pro in-place patch místo resetRender
 let activeTab = "unassigned";
 let tab2Unlocked = false;
 
@@ -251,7 +452,7 @@ function timeAgo(unixSec) {
 // ----- Inicializace navigace + reakce na změnu uživatele -----
 let bmAutoSaveDone = false;
 
-initNavigation("zalozky", (user) => {
+initNavigation("zalozky", async (user) => {
     currentUser = user;
 
     if (unsubscribeBookmarks) {
@@ -260,13 +461,23 @@ initNavigation("zalozky", (user) => {
     }
 
     if (user) {
+        await initEncryption();
+
         const ref = collection(db, "users", user.uid, "bookmarks");
         unsubscribeBookmarks = onSnapshot(
             ref,
-            (snapshot) => {
-                bookmarks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            async (snapshot) => {
+                const raw = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+                const decrypted = await Promise.all(raw.map(decryptBookmark));
+                bookmarks = decrypted.filter(Boolean);
                 sortBookmarks(bookmarks);
-                resetRender();
+                const patchId = _patchBookmarkId;
+                _patchBookmarkId = null;
+                if (patchId) {
+                    patchTileById(patchId);
+                } else {
+                    resetRender();
+                }
                 // Auto-save z bookmarkletu — až víme kdo je přihlášen
                 if (BM_PARAMS && !bmAutoSaveDone) {
                     bmAutoSaveDone = true;
@@ -338,8 +549,9 @@ function sortBookmarks(arr) {
 
 async function persistBookmark(bookmark) {
     if (currentUser) {
-        const ref = doc(db, "users", currentUser.uid, "bookmarks", bookmark.id);
-        const { id, ...data } = bookmark;
+        const enc = await encryptBookmark(bookmark);
+        const ref = doc(db, "users", currentUser.uid, "bookmarks", enc.id);
+        const { id, ...data } = enc;
         await setDoc(ref, data);
     } else {
         bookmarks.unshift(bookmark);
@@ -351,8 +563,9 @@ async function persistBookmark(bookmark) {
 
 async function updateBookmark(bookmark) {
     if (currentUser) {
-        const ref = doc(db, "users", currentUser.uid, "bookmarks", bookmark.id);
-        const { id, ...data } = bookmark;
+        const enc = await encryptBookmark(bookmark);
+        const ref = doc(db, "users", currentUser.uid, "bookmarks", enc.id);
+        const { id, ...data } = enc;
         await setDoc(ref, data);
     } else {
         const idx = bookmarks.findIndex((b) => b.id === bookmark.id);
@@ -747,6 +960,7 @@ async function regenBookmarkPreview(bookmark, btn) {
     try {
         const preview = await fetchPreview(bookmark.url);
         const newImg = preview.image || "";
+        _patchBookmarkId = bookmark.id; // onSnapshot použije patch místo resetRender
         await updateBookmark({
             ...bookmark,
             title:       preview.title       || bookmark.title,
@@ -1300,6 +1514,7 @@ function disconnectObserver() {
 function createTile(bookmark) {
     const tile = document.createElement("article");
     tile.className = "bookmark-tile";
+    tile.dataset.bookmarkId = bookmark.id;
     if (bookmark.favorite) tile.classList.add("is-favorite");
 
     // Klikatelný odkaz
@@ -1468,4 +1683,13 @@ function createTile(bookmark) {
     tile.appendChild(controls);
 
     return tile;
+}
+
+// Nahradí jeden tile na místě bez resetRender (zachová scroll pozici)
+function patchTileById(id) {
+    const bm = bookmarks.find((b) => b.id === id);
+    if (!bm) return;
+    const old = gridEl.querySelector(`[data-bookmark-id="${id}"]`);
+    if (!old) return;
+    old.replaceWith(createTile(bm));
 }
