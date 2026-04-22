@@ -689,32 +689,51 @@ async function handleSubmit(event) {
     }
 }
 
-// Uloží záložku přijatou přes bookmarklet — data jsou přímo z meta tagů stránky
+// Uloží nebo aktualizuje záložku přijatou přes bookmarklet.
+// Data pocházejí přímo z meta tagů stránky — žádný proxy, žádné limity.
 async function saveBookmarkletData({ url, title, desc, image, domain }) {
     if (!url) return;
     const parsed = safeParseUrl(url);
     if (!parsed) return;
 
-    showStatus("Ukládám záložku ze stránky…", "info");
+    // Zkus najít existující záložku se stejnou URL
+    const existing = bookmarks.find((b) => b.url === url);
 
-    const bookmark = {
-        id: generateId(),
-        url,
-        title: title || parsed.hostname,
-        description: desc || "",
-        image: image || "",
-        domain: domain || parsed.hostname,
-        favorite: false,
-        tab: null,
-        createdAt: Date.now(),
-    };
-
-    try {
-        await persistBookmark(bookmark);
-        showStatus("✓ Záložka uložena s náhledem ze stránky.", "ok");
-    } catch (err) {
-        console.error(err);
-        showStatus("Chyba při ukládání: " + err.message, "error");
+    if (existing) {
+        showStatus("Aktualizuji náhled záložky…", "info");
+        try {
+            await updateBookmark({
+                ...existing,
+                title:       title  || existing.title,
+                description: desc   || existing.description,
+                image:       image  || existing.image,
+                domain:      domain || existing.domain,
+            });
+            showStatus("✓ Náhled záložky aktualizován ze stránky.", "ok");
+        } catch (err) {
+            console.error(err);
+            showStatus("Chyba při aktualizaci: " + err.message, "error");
+        }
+    } else {
+        showStatus("Ukládám záložku ze stránky…", "info");
+        const bookmark = {
+            id: generateId(),
+            url,
+            title:       title  || parsed.hostname,
+            description: desc   || "",
+            image:       image  || "",
+            domain:      domain || parsed.hostname,
+            favorite: false,
+            tab: null,
+            createdAt: Date.now(),
+        };
+        try {
+            await persistBookmark(bookmark);
+            showStatus("✓ Záložka uložena s náhledem ze stránky.", "ok");
+        } catch (err) {
+            console.error(err);
+            showStatus("Chyba při ukládání: " + err.message, "error");
+        }
     }
 }
 
