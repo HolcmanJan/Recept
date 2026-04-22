@@ -1316,6 +1316,30 @@ body.has-bottom-nav {
     color: var(--text);
 }
 
+.bookmark-regen {
+    flex: 0 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f9fafb;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    color: #9ca3af;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.bookmark-regen:hover {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.bookmark-regen:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
 .bookmark-delete {
     flex: 0 0 2rem;
     display: flex;

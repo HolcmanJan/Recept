@@ -55,9 +55,12 @@ featuredFixBtn.addEventListener("click", () => {
 });
 
 // ----- Bookmarklet -----
-// Kód bookmarkletu — čte meta tagy přímo ze stránky (žádný CORS)
+// Kód bookmarkletu — čte meta tagy přímo ze stránky (žádný CORS).
+// Když je stránka otevřena jako popup (window.opener existuje), pošle data přes
+// postMessage a zavře se. Jinak otevře novou záložku s URL záložkové aplikace.
 function buildBookmarkletHref() {
     const appUrl = location.origin + location.pathname;
+    const appOrigin = location.origin;
     const code = `(function(){
 function g(a){var e=document.querySelector('meta[property="'+a+'"],meta[name="'+a+'"]');return e?e.getAttribute('content')||'':(a==='og:title'?document.title||'':'');}
 var u=encodeURIComponent;
@@ -65,7 +68,12 @@ var t=g('og:title')||g('twitter:title')||document.title||'';
 var d=g('og:description')||g('twitter:description')||g('description')||'';
 var i=g('og:image')||g('og:image:url')||g('twitter:image')||'';
 var s=g('og:site_name')||location.hostname.replace(/^www\./,'');
-window.open('${appUrl}?bm_url='+u(location.href)+'&bm_title='+u(t)+'&bm_desc='+u(d)+'&bm_image='+u(i)+'&bm_domain='+u(s));
+if(window.opener&&!window.opener.closed){
+  try{window.opener.postMessage({type:'bookmarklet-data',url:location.href,title:t,desc:d,image:i,domain:s},'${appOrigin}');}catch(e){}
+  setTimeout(function(){window.close();},200);
+}else{
+  window.open('${appUrl}?bm_url='+u(location.href)+'&bm_title='+u(t)+'&bm_desc='+u(d)+'&bm_image='+u(i)+'&bm_domain='+u(s));
+}
 })();`;
     return "javascript:" + code.replace(/\n\s*/g, "");
 }
@@ -735,6 +743,70 @@ async function saveBookmarkletData({ url, title, desc, image, domain }) {
             showStatus("Chyba při ukládání: " + err.message, "error");
         }
     }
+}
+
+// Posluchač zpráv od bookmarkletu spuštěného v popupu (window.opener → postMessage)
+let _regenMsgHandler = null;
+
+window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin) return;
+    const data = e.data;
+    if (!data || data.type !== "bookmarklet-data") return;
+    if (_regenMsgHandler) {
+        _regenMsgHandler(data);
+        _regenMsgHandler = null;
+    }
+});
+
+// Otevře URL záložky v popupu a čeká, až uživatel klikne na bookmarklet v liště.
+// Bookmarklet rozpozná window.opener a pošle data přes postMessage → popup se zavře.
+async function regenBookmarkPreview(bookmark, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "⏳";
+
+    const popup = window.open(bookmark.url, "_blank", "width=950,height=720,noopener=no");
+    if (!popup) {
+        alert("Prohlížeč zablokoval otevření popupu.\nPovol popupy pro tuto stránku a zkus to znovu.");
+        btn.disabled = false;
+        btn.textContent = "🔄";
+        return;
+    }
+
+    showStatus("Stránka se otevřela. Klikni na 📌 v záložkové liště prohlížeče.", "info");
+
+    const data = await new Promise((resolve) => {
+        _regenMsgHandler = resolve;
+
+        // Sleduj zavření popupu
+        const poll = setInterval(() => {
+            if (popup.closed) {
+                clearInterval(poll);
+                if (_regenMsgHandler === resolve) {
+                    _regenMsgHandler = null;
+                    resolve(null);
+                }
+            }
+        }, 500);
+    });
+
+    btn.disabled = false;
+    btn.textContent = "🔄";
+
+    if (!data) {
+        showStatus("Popup byl zavřen bez přenesení dat.", "error");
+        return;
+    }
+
+    // Popup poslal data — uložit přes saveBookmarkletData
+    try { popup.close(); } catch {}
+    await saveBookmarkletData({
+        url:    data.url    || bookmark.url,
+        title:  data.title  || "",
+        desc:   data.desc   || "",
+        image:  data.image  || "",
+        domain: data.domain || "",
+    });
 }
 
 function showStatus(text, type) {
@@ -1420,8 +1492,22 @@ function createTile(bookmark) {
         }
     });
 
+    // Tlačítko přegenerování náhledu přes bookmarklet v popupu
+    const regenBtn = document.createElement("button");
+    regenBtn.type = "button";
+    regenBtn.className = "bookmark-regen";
+    regenBtn.setAttribute("aria-label", "Přegenerovat náhled");
+    regenBtn.title = "Přegenerovat náhled (otevře stránku, klikni na 📌 v liště)";
+    regenBtn.textContent = "🔄";
+    regenBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        regenBookmarkPreview(bookmark, regenBtn);
+    });
+
     const controls = document.createElement("div");
     controls.className = "bookmark-controls";
+    controls.appendChild(regenBtn);
     controls.appendChild(tabSelect);
     controls.appendChild(delBtn);
     tile.appendChild(controls);
