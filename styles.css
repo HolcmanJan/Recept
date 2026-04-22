@@ -919,6 +919,82 @@ body.has-bottom-nav {
     .bookmarklet-hint { display: none; }
 }
 
+/* ===== Overlay šifrování ===== */
+
+.enc-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(3px);
+}
+
+.enc-overlay.hidden {
+    display: none;
+}
+
+.enc-dialog {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    width: min(420px, 90vw);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.enc-dialog-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.enc-dialog-desc {
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.enc-input {
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: var(--bg);
+    color: var(--text);
+    box-sizing: border-box;
+}
+
+.enc-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+
+.enc-error {
+    font-size: 0.85rem;
+    color: #dc2626;
+    margin: 0;
+}
+
+.enc-error.hidden {
+    display: none;
+}
+
+.enc-actions {
+    display: flex;
+    gap: 0.6rem;
+}
+
+/* ===== Formulář záložek ===== */
+
 .bookmark-form {
     display: flex;
     gap: 0.5rem;

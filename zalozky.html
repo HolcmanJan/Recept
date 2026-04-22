@@ -71,6 +71,19 @@
         <p id="bookmarks-end" class="bookmarks-end hidden">Už není co načíst.</p>
     </main>
 
+    <div id="enc-overlay" class="enc-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="enc-title">
+        <div class="enc-dialog">
+            <h2 id="enc-title" class="enc-dialog-title"></h2>
+            <p id="enc-desc" class="enc-dialog-desc"></p>
+            <input type="password" id="enc-password" class="enc-input" placeholder="Heslo" autocomplete="current-password">
+            <p id="enc-error" class="enc-error hidden"></p>
+            <div class="enc-actions">
+                <button type="button" id="enc-submit" class="btn btn-primary">Odemknout</button>
+                <button type="button" id="enc-skip" class="btn btn-secondary hidden">Přeskočit</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="zalozky.js"></script>
 </body>
 </html>
