@@ -221,6 +221,7 @@ function showEncDialog({ mode, salt, verify }) {
     });
 }
 const REDDIT_POST_LIMIT = 5; // kolik příspěvků načíst ze subredditu
+const WORKER_API = "https://link-preview.recept.workers.dev/?url=";
 
 // ----- Stav -----
 let bookmarks = [];
@@ -256,16 +257,20 @@ featuredFixBtn.addEventListener("click", () => {
 });
 
 // ----- Bookmarklet -----
-// Kód bookmarkletu — čte meta tagy přímo ze stránky (žádný CORS)
+// Kód bookmarkletu — čte meta tagy, JSON-LD, link[rel] a fallback <img> přímo ze stránky
 function buildBookmarkletHref() {
     const appUrl = location.origin + location.pathname;
     const code = `(function(){
-function g(a){var e=document.querySelector('meta[property="'+a+'"],meta[name="'+a+'"]');return e?e.getAttribute('content')||'':(a==='og:title'?document.title||'':'');}
+function g(a){var e=document.querySelector('meta[property="'+a+'"],meta[name="'+a+'"],meta[itemprop="'+a.replace(/^og:/,"")+'"]');return e?e.getAttribute('content')||'':(a==='og:title'?document.title||'':'');}
 var u=encodeURIComponent;
 var t=g('og:title')||g('twitter:title')||document.title||'';
 var d=g('og:description')||g('twitter:description')||g('description')||'';
-var i=g('og:image')||g('og:image:url')||g('twitter:image')||'';
-var s=g('og:site_name')||location.hostname.replace(/^www\./,'');
+var i=g('og:image')||g('og:image:url')||g('twitter:image')||g('twitter:image:src')||g('image');
+if(!i){var lk=document.querySelector('link[rel="image_src"],link[rel="icon"][sizes="192x192"],link[rel="apple-touch-icon"]');if(lk)i=lk.href||'';}
+if(!i){try{document.querySelectorAll('script[type="application/ld+json"]').forEach(function(sc){if(i)return;var j=JSON.parse(sc.textContent);function f(n){if(!n||typeof n!=='object')return'';if(Array.isArray(n)){for(var x=0;x<n.length;x++){var r=f(n[x]);if(r)return r;}return'';}if(n.image){if(typeof n.image==='string')return n.image;if(Array.isArray(n.image)){var r2=f(n.image);if(r2)return r2;}if(n.image.url)return n.image.url;}if(n['@graph'])return f(n['@graph']);return'';}i=f(j);});}catch(e){}}
+if(!i){var imgs=document.querySelectorAll('article img[src],main img[src],[role="main"] img[src],#content img[src],.post img[src]');if(!imgs.length)imgs=document.querySelectorAll('img[src]');for(var m=0;m<imgs.length;m++){var src=imgs[m].src;if(!src||/^data:|favicon|spacer|pixel|blank|tracking|1x1|sprite|logo.*\\.(ico|svg)/i.test(src))continue;var w=imgs[m].naturalWidth||imgs[m].width,h=imgs[m].naturalHeight||imgs[m].height;if((w>0&&w<150)||(h>0&&h<150))continue;i=src;break;}}
+if(i&&!/^https?:\\/\\//i.test(i)){i=i.indexOf('//')==0?'https:'+i:i[0]==='/'?location.origin+i:location.origin+'/'+i;}
+var s=g('og:site_name')||location.hostname.replace(/^www\\./,'');
 window.open('${appUrl}?bm_url='+u(location.href)+'&bm_title='+u(t)+'&bm_desc='+u(d)+'&bm_image='+u(i)+'&bm_domain='+u(s));
 })();`;
     return "javascript:" + code.replace(/\n\s*/g, "");
@@ -878,7 +883,21 @@ async function handleSubmit(event) {
     showStatus("Načítám náhled stránky…", "info");
 
     try {
-        const preview = await fetchPreview(url);
+        let preview = await fetchPreview(url);
+
+        // Worker fallback pokud chybí obrázek
+        if (!preview.image) {
+            try {
+                const wp = await fetchWorkerPreview(url);
+                if (wp) {
+                    if (!preview.image && wp.image) preview.image = wp.image;
+                    if (!preview.title && wp.title) preview.title = wp.title;
+                    if (!preview.description && wp.description) preview.description = wp.description;
+                    if (!preview.domain && wp.domain) preview.domain = wp.domain;
+                }
+            } catch (_) {}
+        }
+
         const bookmark = {
             id: generateId(),
             url,
@@ -950,7 +969,16 @@ async function saveBookmarkletData({ url, title, desc, image, domain }) {
     }
 }
 
-// Přegeneruje náhled záložky přes fetchPreview (microlink + CORS proxy)
+// Zkusí Cloudflare Worker — parsuje HTML server-side (bez CORS omezení)
+async function fetchWorkerPreview(url) {
+    const res = await fetch(WORKER_API + encodeURIComponent(url));
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error && !data.title && !data.image) return null;
+    return data;
+}
+
+// Přegeneruje náhled záložky: fetchPreview → Worker fallback
 async function regenBookmarkPreview(bookmark, btn) {
     if (btn.disabled) return;
     btn.disabled = true;
@@ -958,9 +986,25 @@ async function regenBookmarkPreview(bookmark, btn) {
     showStatus("Přegenerovávám náhled…", "info");
 
     try {
-        const preview = await fetchPreview(bookmark.url);
+        let preview = await fetchPreview(bookmark.url);
+
+        // Fallback přes Cloudflare Worker pokud chybí obrázek nebo title
+        if (!preview.image || !preview.title || preview.title === bookmark.domain) {
+            try {
+                const wp = await fetchWorkerPreview(bookmark.url);
+                if (wp) {
+                    if (!preview.image && wp.image) preview.image = wp.image;
+                    if ((!preview.title || preview.title === bookmark.domain) && wp.title) preview.title = wp.title;
+                    if (!preview.description && wp.description) preview.description = wp.description;
+                    if (!preview.domain && wp.domain) preview.domain = wp.domain;
+                }
+            } catch (err) {
+                console.warn("Worker fallback selhal:", err.message);
+            }
+        }
+
         const newImg = preview.image || "";
-        _patchBookmarkId = bookmark.id; // onSnapshot použije patch místo resetRender
+        _patchBookmarkId = bookmark.id;
         await updateBookmark({
             ...bookmark,
             title:       preview.title       || bookmark.title,
