@@ -54,6 +54,42 @@ featuredFixBtn.addEventListener("click", () => {
     fixBrokenPreviews();
 });
 
+// ----- Bookmarklet -----
+// Kód bookmarkletu — čte meta tagy přímo ze stránky (žádný CORS)
+function buildBookmarkletHref() {
+    const appUrl = location.origin + location.pathname;
+    const code = `(function(){
+function g(a){var e=document.querySelector('meta[property="'+a+'"],meta[name="'+a+'"]');return e?e.getAttribute('content')||'':(a==='og:title'?document.title||'':'');}
+var u=encodeURIComponent;
+var t=g('og:title')||g('twitter:title')||document.title||'';
+var d=g('og:description')||g('twitter:description')||g('description')||'';
+var i=g('og:image')||g('og:image:url')||g('twitter:image')||'';
+var s=g('og:site_name')||location.hostname.replace(/^www\./,'');
+window.open('${appUrl}?bm_url='+u(location.href)+'&bm_title='+u(t)+'&bm_desc='+u(d)+'&bm_image='+u(i)+'&bm_domain='+u(s));
+})();`;
+    return "javascript:" + code.replace(/\n\s*/g, "");
+}
+
+document.getElementById("bookmarklet-link").href = buildBookmarkletHref();
+
+// Pokud byla stránka otevřena bookmarkletem, zpracuj parametry a ulož záložku
+const BM_PARAMS = (() => {
+    const p = new URLSearchParams(location.search);
+    if (!p.has("bm_url")) return null;
+    return {
+        url:    p.get("bm_url")    || "",
+        title:  p.get("bm_title")  || "",
+        desc:   p.get("bm_desc")   || "",
+        image:  p.get("bm_image")  || "",
+        domain: p.get("bm_domain") || "",
+    };
+})();
+
+// Odstraň parametry z URL baru (bez přesměrování)
+if (BM_PARAMS) {
+    history.replaceState(null, "", location.pathname);
+}
+
 // ----- Záložkové přepínače -----
 tabsEl.addEventListener("click", (e) => {
     const btn = e.target.closest(".bookmark-tab");
@@ -213,6 +249,8 @@ function timeAgo(unixSec) {
 }
 
 // ----- Inicializace navigace + reakce na změnu uživatele -----
+let bmAutoSaveDone = false;
+
 initNavigation("zalozky", (user) => {
     currentUser = user;
 
@@ -229,6 +267,11 @@ initNavigation("zalozky", (user) => {
                 bookmarks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
                 sortBookmarks(bookmarks);
                 resetRender();
+                // Auto-save z bookmarkletu — až víme kdo je přihlášen
+                if (BM_PARAMS && !bmAutoSaveDone) {
+                    bmAutoSaveDone = true;
+                    saveBookmarkletData(BM_PARAMS);
+                }
             },
             (err) => {
                 console.error("Firestore chyba:", err);
@@ -238,6 +281,10 @@ initNavigation("zalozky", (user) => {
     } else {
         bookmarks = loadLocal();
         resetRender();
+        if (BM_PARAMS && !bmAutoSaveDone) {
+            bmAutoSaveDone = true;
+            saveBookmarkletData(BM_PARAMS);
+        }
     }
 });
 
@@ -639,6 +686,35 @@ async function handleSubmit(event) {
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "Přidat";
+    }
+}
+
+// Uloží záložku přijatou přes bookmarklet — data jsou přímo z meta tagů stránky
+async function saveBookmarkletData({ url, title, desc, image, domain }) {
+    if (!url) return;
+    const parsed = safeParseUrl(url);
+    if (!parsed) return;
+
+    showStatus("Ukládám záložku ze stránky…", "info");
+
+    const bookmark = {
+        id: generateId(),
+        url,
+        title: title || parsed.hostname,
+        description: desc || "",
+        image: image || "",
+        domain: domain || parsed.hostname,
+        favorite: false,
+        tab: null,
+        createdAt: Date.now(),
+    };
+
+    try {
+        await persistBookmark(bookmark);
+        showStatus("✓ Záložka uložena s náhledem ze stránky.", "ok");
+    } catch (err) {
+        console.error(err);
+        showStatus("Chyba při ukládání: " + err.message, "error");
     }
 }
 

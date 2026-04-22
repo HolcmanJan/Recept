@@ -874,6 +874,51 @@ body.has-bottom-nav {
     color: var(--muted);
 }
 
+.bookmarklet-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.bookmarklet-label {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.bookmarklet-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 8px;
+    border: 1.5px dashed var(--primary);
+    color: var(--primary);
+    background: transparent;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: grab;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.bookmarklet-btn:hover {
+    background: var(--primary);
+    color: #fff;
+}
+
+.bookmarklet-hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+@media (max-width: 500px) {
+    .bookmarklet-hint { display: none; }
+}
+
 .bookmark-form {
     display: flex;
     gap: 0.5rem;
