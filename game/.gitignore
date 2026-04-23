@@ -1,0 +1,10 @@
+# Godot 4 generated files
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# System files
+.DS_Store
+Thumbs.db
