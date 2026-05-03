@@ -479,6 +479,12 @@ const TOTAL = 14; // 6 pits + 1 store per player
 const INIT_STONES = 4;
 const ANIM_DELAY = 180; // ms between each stone drop
 
+// Counter-clockwise traversal: 0→1→…→5 → 6(P1 store) → 12→11→…→7 → 13(P2 store) → 0
+const CCW = [0, 1, 2, 3, 4, 5, 6, 12, 11, 10, 9, 8, 7, 13];
+const CCW_NEXT = {};
+for (let i = 0; i < CCW.length; i++) CCW_NEXT[CCW[i]] = CCW[(i + 1) % CCW.length];
+function nextPit(pos) { return CCW_NEXT[pos]; }
+
 // ═══ STATE ═══
 let board = [];      // 14 slots
 let turn = 0;        // 0 = P1, 1 = P2
@@ -660,8 +666,8 @@ async function doMove(pitIdx) {
   let pos = pitIdx;
   let lastPos = pitIdx;
   for (let i = 0; i < stones; i++) {
-    pos = (pos + 1) % TOTAL;
-    if (pos === oppStore) pos = (pos + 1) % TOTAL; // skip opponent store
+    pos = nextPit(pos);
+    if (pos === oppStore) pos = nextPit(pos);
     lastPos = pos;
 
     // Animate flying stone
@@ -929,8 +935,8 @@ function simulate(b, pitIdx, player) {
   let pos = pitIdx;
   let lastPos = pitIdx;
   for (let i = 0; i < stones; i++) {
-    pos = (pos + 1) % TOTAL;
-    if (pos === oppStore) pos = (pos + 1) % TOTAL;
+    pos = nextPit(pos);
+    if (pos === oppStore) pos = nextPit(pos);
     nb[pos]++;
     lastPos = pos;
   }
