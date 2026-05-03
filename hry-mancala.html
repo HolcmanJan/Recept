@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Mancala</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg0: #0b0d11;
+  --bg1: #111318;
+  --bg2: #181b22;
+  --bg3: #1f2330;
+  --glass: rgba(255,255,255,.045);
+  --glass2: rgba(255,255,255,.07);
+  --glass3: rgba(255,255,255,.10);
+  --border: rgba(255,255,255,.08);
+  --border2: rgba(255,255,255,.13);
+  --text: #f0f2f7;
+  --muted: #6b7280;
+  --muted2: #9ca3af;
+  --accent: #6366f1;
+  --accent2: #818cf8;
+  --accent-glow: rgba(99,102,241,.35);
+  --green: #10b981;
+  --green-glow: rgba(16,185,129,.3);
+  --amber: #f59e0b;
+  --amber-glow: rgba(245,158,11,.25);
+  --red: #ef4444;
+  --red-glow: rgba(239,68,68,.3);
+  --p1: #6366f1;
+  --p1-glow: rgba(99,102,241,.4);
+  --p2: #10b981;
+  --p2-glow: rgba(16,185,129,.4);
+  --board: rgba(30,27,20,.85);
+  --pit: rgba(0,0,0,.35);
+  --pit-hover: rgba(99,102,241,.18);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{font-size:16px;}
+
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(99,102,241,.10) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 60% at 80% 110%, rgba(16,185,129,.07) 0%, transparent 55%);
+}
+body::before {
+  content:'';
+  position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ── HEADER ── */
+header {
+  position: relative; z-index: 2;
+  padding: 1.2rem 1.2rem .6rem;
+  max-width: 720px; margin: 0 auto; width: 100%;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.logo { display:flex; align-items:center; gap:.7rem; }
+.logo-icon {
+  width:36px; height:36px; background:var(--accent); border-radius:10px;
+  display:flex; align-items:center; justify-content:center; font-size:1.1rem;
+  box-shadow: 0 0 18px var(--accent-glow);
+}
+.logo-text { font-size:1.15rem; font-weight:700; letter-spacing:-.02em; }
+.logo-text span { color:var(--accent2); }
+.btn-back {
+  background:var(--glass2); border:1px solid var(--border);
+  border-radius:8px; padding:.32rem .8rem;
+  font-size:.72rem; font-weight:500; color:var(--muted2);
+  cursor:pointer; transition:all .2s;
+  font-family:'Outfit',sans-serif; text-decoration:none;
+}
+.btn-back:hover { background:var(--glass); border-color:var(--border2); color:var(--text); }
+
+/* ── MODE SELECT OVERLAY ── */
+.overlay {
+  position:fixed; inset:0; z-index:100;
+  background: rgba(11,13,17,.92);
+  backdrop-filter: blur(12px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:1; transition: opacity .4s;
+}
+.overlay.hidden { opacity:0; pointer-events:none; }
+
+.mode-card {
+  background: linear-gradient(135deg, var(--bg2), var(--bg3));
+  border: 1px solid var(--border2);
+  border-radius: 24px;
+  padding: 2.5rem 2rem;
+  width: min(400px, 88vw);
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5), 0 0 60px rgba(99,102,241,.08);
+}
+.mode-card h2 {
+  font-size: 1.6rem; font-weight: 800; margin-bottom:.3rem;
+  background: linear-gradient(135deg, var(--accent2), var(--green));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.mode-card p { color:var(--muted2); font-size:.88rem; margin-bottom:1.8rem; }
+.mode-buttons { display:flex; flex-direction:column; gap:.7rem; }
+.mode-btn {
+  display:flex; align-items:center; gap:.9rem;
+  background: var(--glass2); border:1px solid var(--border);
+  border-radius: 14px; padding: 1rem 1.3rem;
+  cursor:pointer; transition: all .25s;
+  font-family:'Outfit',sans-serif; text-align:left; color:var(--text);
+}
+.mode-btn:hover {
+  background: var(--glass3); border-color:var(--border2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+}
+.mode-btn .icon {
+  width:44px; height:44px; border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.3rem; flex-shrink:0;
+}
+.mode-btn.pvp .icon { background: rgba(99,102,241,.15); }
+.mode-btn.bot .icon { background: rgba(16,185,129,.15); }
+.mode-btn h3 { font-size:.95rem; font-weight:600; }
+.mode-btn small { font-size:.72rem; color:var(--muted); }
+
+/* ── GAME AREA ── */
+.game-wrap {
+  position:relative; z-index:1;
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding: .8rem 1rem 1rem;
+  max-width: 720px; margin: 0 auto; width:100%;
+}
+
+/* Player info strips */
+.player-bar {
+  display:flex; justify-content:space-between; align-items:center;
+  width:100%; padding:.45rem .8rem; margin-bottom:.5rem;
+  border-radius:12px; transition: all .4s;
+  background: var(--glass);
+  border: 1px solid transparent;
+}
+.player-bar.active { border-color: var(--border2); }
+.player-bar.active.p1 { box-shadow: 0 0 20px var(--p1-glow), inset 0 0 20px rgba(99,102,241,.06); }
+.player-bar.active.p2 { box-shadow: 0 0 20px var(--p2-glow), inset 0 0 20px rgba(16,185,129,.06); }
+.player-name {
+  font-weight:600; font-size:.85rem;
+  display:flex; align-items:center; gap:.45rem;
+}
+.player-dot {
+  width:8px; height:8px; border-radius:50%;
+  transition: box-shadow .4s;
+}
+.p1 .player-dot { background:var(--p1); }
+.p2 .player-dot { background:var(--p2); }
+.player-bar.active .player-dot { box-shadow: 0 0 10px currentColor; }
+.player-score { font-weight:700; font-size:1.05rem; }
+.p1 .player-score { color:var(--accent2); }
+.p2 .player-score { color:var(--green); }
+
+/* ── BOARD ── */
+.board {
+  display: grid;
+  grid-template-columns: 1fr 6fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0;
+  width: 100%;
+  aspect-ratio: 2.6/1;
+  max-height: 260px;
+  background: linear-gradient(145deg, #2a2318, #1a1610);
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.06);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.5),
+    inset 0 2px 0 rgba(255,255,255,.05),
+    0 0 40px rgba(99,102,241,.04);
+  padding: .6rem;
+  position: relative;
+  overflow: hidden;
+}
+.board::before {
+  content:''; position:absolute; inset:0; border-radius:inherit;
+  background: repeating-conic-gradient(rgba(255,255,255,.008) 0% 25%, transparent 0% 50%) 0 0 / 20px 20px;
+  pointer-events:none;
+}
+
+/* Stores (mancalas) */
+.store {
+  grid-row: 1 / -1;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  border-radius: 999px;
+  background: var(--pit);
+  border: 1px solid rgba(255,255,255,.04);
+  box-shadow: inset 0 4px 12px rgba(0,0,0,.4);
+  position:relative;
+  transition: box-shadow .4s;
+}
+.store-p2 { grid-column:1; }
+.store-p1 { grid-column:3; }
+.store .count {
+  font-size: 1.5rem; font-weight:700;
+  text-shadow: 0 0 12px rgba(255,255,255,.2);
+}
+.store .stones-wrap {
+  display:flex; flex-wrap:wrap; justify-content:center;
+  gap:2px; padding:.2rem; max-width:90%;
+}
+
+/* Pit rows */
+.pits-row {
+  display:flex; gap:.35rem;
+  grid-column:2;
+  padding: .2rem .3rem;
+}
+.pits-top { grid-row:1; direction:rtl; }
+.pits-bottom { grid-row:2; }
+
+/* Individual pits */
+.pit {
+  flex:1;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:.15rem;
+  border-radius:50%;
+  aspect-ratio:1;
+  background: var(--pit);
+  border: 1px solid rgba(255,255,255,.03);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.35);
+  cursor:pointer;
+  transition: all .2s;
+  position:relative;
+}
+.pit:hover:not(.disabled):not(.empty) {
+  background: var(--pit-hover);
+  border-color: rgba(99,102,241,.25);
+  box-shadow: inset 0 3px 8px rgba(0,0,0,.25), 0 0 15px rgba(99,102,241,.12);
+  transform: scale(1.06);
+}
+.pit.disabled, .pit.empty {
+  cursor: default; opacity:.6;
+}
+.pit .count {
+  font-size:.8rem; font-weight:600;
+  text-shadow: 0 0 8px rgba(255,255,255,.15);
+  pointer-events:none;
+}
+.pit .stones-wrap {
+  display:flex; flex-wrap:wrap; justify-content:center;
+  gap:1.5px; max-width:80%; pointer-events:none;
+}
+
+/* Stone elements */
+.stone {
+  width: 10px; height:10px; border-radius:50%;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.2);
+  flex-shrink:0;
+}
+.store .stone { width:9px; height:9px; }
+
+.stone-c0 { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.stone-c1 { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+.stone-c2 { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.stone-c3 { background: linear-gradient(135deg, #10b981, #059669); }
+.stone-c4 { background: linear-gradient(135deg, #ec4899, #db2777); }
+.stone-c5 { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+
+/* Flying stone */
+.flying-stone {
+  position:fixed;
+  width:12px; height:12px; border-radius:50%;
+  z-index:50; pointer-events:none;
+  transition: left .28s cubic-bezier(.4,0,.2,1), top .28s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 0 12px rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.3);
+}
+
+/* Turn indicator */
+.turn-indicator {
+  margin-top:.6rem;
+  font-size:.82rem; font-weight:500; color:var(--muted2);
+  text-align:center;
+  min-height:1.4em;
+  transition: color .3s;
+}
+.turn-indicator.extra { color:var(--amber); }
+
+/* ── WINNER OVERLAY ── */
+.winner-overlay {
+  position:fixed; inset:0; z-index:100;
+  background: rgba(11,13,17,.88);
+  backdrop-filter: blur(12px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transition: opacity .5s;
+}
+.winner-overlay.show { opacity:1; pointer-events:auto; }
+
+.winner-card {
+  text-align:center;
+  background: linear-gradient(135deg, var(--bg2), var(--bg3));
+  border: 1px solid var(--border2);
+  border-radius: 24px;
+  padding: 2.5rem 2.2rem;
+  width: min(380px, 85vw);
+  box-shadow: 0 24px 80px rgba(0,0,0,.5);
+  transform: scale(.9);
+  transition: transform .5s cubic-bezier(.2,.8,.2,1.2);
+}
+.winner-overlay.show .winner-card { transform: scale(1); }
+.winner-card .trophy { font-size:3rem; margin-bottom:.6rem; }
+.winner-card h2 {
+  font-size:1.4rem; font-weight:800; margin-bottom:.3rem;
+}
+.winner-card .scores {
+  color:var(--muted2); font-size:.9rem; margin-bottom:1.6rem;
+}
+.winner-card .btn-row { display:flex; gap:.6rem; justify-content:center; flex-wrap:wrap; }
+.btn-play {
+  background: var(--accent); color:#fff; border:none;
+  border-radius:12px; padding:.65rem 1.5rem;
+  font-size:.85rem; font-weight:600; cursor:pointer;
+  font-family:'Outfit',sans-serif; transition: all .2s;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.btn-play:hover { background:var(--accent2); transform:translateY(-1px); }
+.btn-menu {
+  background:var(--glass2); color:var(--muted2); border:1px solid var(--border);
+  border-radius:12px; padding:.65rem 1.5rem;
+  font-size:.85rem; font-weight:500; cursor:pointer;
+  font-family:'Outfit',sans-serif; transition: all .2s;
+}
+.btn-menu:hover { background:var(--glass3); color:var(--text); }
+
+/* ── DIFFICULTY SELECT (sub-card for bot mode) ── */
+.diff-card {
+  display: none;
+  flex-direction: column;
+  gap: .6rem;
+  margin-top: 1.2rem;
+}
+.diff-card.show { display: flex; }
+.diff-btn {
+  display:flex; align-items:center; gap:.7rem;
+  background: var(--glass); border:1px solid var(--border);
+  border-radius:10px; padding:.7rem 1rem;
+  cursor:pointer; transition:all .2s;
+  font-family:'Outfit',sans-serif; color:var(--text); text-align:left;
+}
+.diff-btn:hover { background:var(--glass2); border-color:var(--border2); transform:translateY(-1px); }
+.diff-btn .d-icon { font-size:1.1rem; }
+.diff-btn h4 { font-size:.82rem; font-weight:600; }
+.diff-btn small { font-size:.68rem; color:var(--muted); }
+
+/* Responsive */
+@media (max-width:480px) {
+  .board { aspect-ratio:2.4/1; max-height:200px; padding:.4rem; border-radius:80px; }
+  .pits-row { gap:.2rem; padding:.15rem .2rem; }
+  .pit .count { font-size:.65rem; }
+  .store .count { font-size:1.1rem; }
+  .stone { width:7px; height:7px; }
+  .store .stone { width:6px; height:6px; }
+  .flying-stone { width:9px; height:9px; }
+  .player-bar { padding:.35rem .6rem; }
+}
+@media (max-width:360px) {
+  .board { border-radius:60px; padding:.3rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏺</div>
+    <div>
+      <div class="logo-text">Man<span>cala</span></div>
+    </div>
+  </div>
+  <a href="hry.html" class="btn-back">← Hry</a>
+</header>
+
+<!-- MODE SELECT -->
+<div class="overlay" id="mode-overlay">
+  <div class="mode-card">
+    <h2>Mancala</h2>
+    <p>Starověká strategická desková hra</p>
+    <div class="mode-buttons">
+      <button class="mode-btn pvp" id="btn-pvp">
+        <div class="icon">👥</div>
+        <div><h3>Dva hráči</h3><small>Hraj s kamarádem na jednom zařízení</small></div>
+      </button>
+      <button class="mode-btn bot" id="btn-bot">
+        <div class="icon">🤖</div>
+        <div><h3>Proti botovi</h3><small>Vyber si obtížnost a hraj proti počítači</small></div>
+      </button>
+    </div>
+    <div class="diff-card" id="diff-card">
+      <button class="diff-btn" data-depth="1">
+        <span class="d-icon">🟢</span>
+        <div><h4>Lehká</h4><small>Bot hraje náhodněji</small></div>
+      </button>
+      <button class="diff-btn" data-depth="4">
+        <span class="d-icon">🟡</span>
+        <div><h4>Střední</h4><small>Bot přemýšlí dopředu</small></div>
+      </button>
+      <button class="diff-btn" data-depth="8">
+        <span class="d-icon">🔴</span>
+        <div><h4>Těžká</h4><small>Bot hraje optimálně</small></div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div class="game-wrap" id="game-wrap">
+  <div class="player-bar p2" id="bar-p2">
+    <span class="player-name"><span class="player-dot"></span> <span id="name-p2">Hráč 2</span></span>
+    <span class="player-score" id="score-p2">0</span>
+  </div>
+
+  <div class="board" id="board">
+    <!-- Store P2 (left) -->
+    <div class="store store-p2" id="store-13">
+      <span class="count" id="count-13">0</span>
+      <div class="stones-wrap" id="sw-13"></div>
+    </div>
+
+    <!-- Top row: P2 pits (12..7) displayed RTL -->
+    <div class="pits-row pits-top" id="pits-top"></div>
+
+    <!-- Bottom row: P1 pits (0..5) -->
+    <div class="pits-row pits-bottom" id="pits-bottom"></div>
+
+    <!-- Store P1 (right) -->
+    <div class="store store-p1" id="store-6">
+      <span class="count" id="count-6">0</span>
+      <div class="stones-wrap" id="sw-6"></div>
+    </div>
+  </div>
+
+  <div class="player-bar p1 active" id="bar-p1">
+    <span class="player-name"><span class="player-dot"></span> <span id="name-p1">Hráč 1</span></span>
+    <span class="player-score" id="score-p1">0</span>
+  </div>
+
+  <div class="turn-indicator" id="turn-ind">Hráč 1 je na tahu</div>
+</div>
+
+<!-- WINNER -->
+<div class="winner-overlay" id="winner-overlay">
+  <div class="winner-card">
+    <div class="trophy" id="w-trophy">🏆</div>
+    <h2 id="w-title">Konec hry!</h2>
+    <p class="scores" id="w-scores"></p>
+    <div class="btn-row">
+      <button class="btn-play" id="btn-again">Hrát znovu</button>
+      <button class="btn-menu" id="btn-mode">Změnit režim</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ═══ CONSTANTS ═══
+const PITS_PER_SIDE = 6;
+const STORE_P1 = 6;
+const STORE_P2 = 13;
+const TOTAL = 14; // 6 pits + 1 store per player
+const INIT_STONES = 4;
+const ANIM_DELAY = 180; // ms between each stone drop
+
+// ═══ STATE ═══
+let board = [];      // 14 slots
+let turn = 0;        // 0 = P1, 1 = P2
+let mode = null;     // 'pvp' or 'bot'
+let botDepth = 4;
+let animating = false;
+let stoneColors = []; // per-slot array of color indices
+
+// ═══ DOM ═══
+const modeOverlay  = document.getElementById("mode-overlay");
+const diffCard     = document.getElementById("diff-card");
+const gameWrap     = document.getElementById("game-wrap");
+const boardEl      = document.getElementById("board");
+const barP1        = document.getElementById("bar-p1");
+const barP2        = document.getElementById("bar-p2");
+const scoreP1      = document.getElementById("score-p1");
+const scoreP2      = document.getElementById("score-p2");
+const nameP1       = document.getElementById("name-p1");
+const nameP2       = document.getElementById("name-p2");
+const turnInd      = document.getElementById("turn-ind");
+const winOverlay   = document.getElementById("winner-overlay");
+
+// ═══ BUILD PIT ELEMENTS ═══
+const pitEls = [];
+const pitsTop = document.getElementById("pits-top");
+const pitsBot = document.getElementById("pits-bottom");
+
+for (let i = 0; i < PITS_PER_SIDE; i++) {
+  const pit = document.createElement("div");
+  pit.className = "pit";
+  pit.dataset.idx = String(i);
+  pit.innerHTML = `<span class="count" id="count-${i}">0</span><div class="stones-wrap" id="sw-${i}"></div>`;
+  pit.addEventListener("click", () => onPitClick(i));
+  pitsBot.appendChild(pit);
+  pitEls[i] = pit;
+}
+
+for (let i = 12; i >= 7; i--) {
+  const pit = document.createElement("div");
+  pit.className = "pit";
+  pit.dataset.idx = String(i);
+  pit.innerHTML = `<span class="count" id="count-${i}">0</span><div class="stones-wrap" id="sw-${i}"></div>`;
+  pit.addEventListener("click", () => onPitClick(i));
+  pitsTop.appendChild(pit);
+  pitEls[i] = pit;
+}
+
+pitEls[STORE_P1] = document.getElementById("store-6");
+pitEls[STORE_P2] = document.getElementById("store-13");
+
+// ═══ MODE SELECTION ═══
+document.getElementById("btn-pvp").addEventListener("click", () => {
+  mode = "pvp";
+  nameP2.textContent = "Hráč 2";
+  modeOverlay.classList.add("hidden");
+  startGame();
+});
+
+document.getElementById("btn-bot").addEventListener("click", () => {
+  diffCard.classList.toggle("show");
+});
+
+diffCard.addEventListener("click", (e) => {
+  const btn = e.target.closest(".diff-btn");
+  if (!btn) return;
+  mode = "bot";
+  botDepth = parseInt(btn.dataset.depth, 10);
+  nameP2.textContent = "Bot";
+  modeOverlay.classList.add("hidden");
+  startGame();
+});
+
+document.getElementById("btn-again").addEventListener("click", () => {
+  winOverlay.classList.remove("show");
+  startGame();
+});
+
+document.getElementById("btn-mode").addEventListener("click", () => {
+  winOverlay.classList.remove("show");
+  diffCard.classList.remove("show");
+  modeOverlay.classList.remove("hidden");
+});
+
+// ═══ GAME INIT ═══
+function startGame() {
+  board = new Array(TOTAL).fill(0);
+  stoneColors = Array.from({ length: TOTAL }, () => []);
+  for (let i = 0; i < PITS_PER_SIDE; i++) {
+    board[i] = INIT_STONES;
+    board[i + 7] = INIT_STONES;
+    stoneColors[i] = randomColors(INIT_STONES);
+    stoneColors[i + 7] = randomColors(INIT_STONES);
+  }
+  board[STORE_P1] = 0;
+  board[STORE_P2] = 0;
+  stoneColors[STORE_P1] = [];
+  stoneColors[STORE_P2] = [];
+  turn = 0;
+  animating = false;
+  renderBoard();
+  updateUI();
+}
+
+function randomColors(n) {
+  const arr = [];
+  for (let i = 0; i < n; i++) arr.push(Math.floor(Math.random() * 6));
+  return arr;
+}
+
+// ═══ RENDER ═══
+function renderBoard() {
+  for (let i = 0; i < TOTAL; i++) {
+    const countEl = document.getElementById("count-" + i);
+    const swEl = document.getElementById("sw-" + i);
+    if (!countEl || !swEl) continue;
+    countEl.textContent = board[i];
+    swEl.innerHTML = "";
+    const colors = stoneColors[i] || [];
+    for (let j = 0; j < board[i]; j++) {
+      const s = document.createElement("div");
+      s.className = "stone stone-c" + (colors[j] ?? (j % 6));
+      swEl.appendChild(s);
+    }
+  }
+  // Pit states
+  for (let i = 0; i < PITS_PER_SIDE; i++) {
+    pitEls[i].classList.toggle("empty", board[i] === 0);
+    pitEls[i].classList.toggle("disabled", turn !== 0 || board[i] === 0);
+    const j = i + 7;
+    pitEls[j].classList.toggle("empty", board[j] === 0);
+    pitEls[j].classList.toggle("disabled", turn !== 1 || board[j] === 0);
+  }
+}
+
+function updateUI() {
+  scoreP1.textContent = board[STORE_P1];
+  scoreP2.textContent = board[STORE_P2];
+  barP1.classList.toggle("active", turn === 0);
+  barP2.classList.toggle("active", turn === 1);
+
+  if (turn === 0) {
+    turnInd.textContent = (mode === "bot" ? "Jsi na tahu" : "Hráč 1 je na tahu");
+    turnInd.classList.remove("extra");
+  } else {
+    turnInd.textContent = (mode === "bot" ? "Bot přemýšlí…" : "Hráč 2 je na tahu");
+    turnInd.classList.remove("extra");
+  }
+}
+
+function showExtra() {
+  turnInd.textContent = "Další tah!";
+  turnInd.classList.add("extra");
+}
+
+// ═══ CLICK HANDLER ═══
+function onPitClick(idx) {
+  if (animating) return;
+  if (turn === 0 && idx >= 0 && idx < PITS_PER_SIDE && board[idx] > 0) {
+    doMove(idx);
+  } else if (turn === 1 && mode === "pvp" && idx >= 7 && idx <= 12 && board[idx] > 0) {
+    doMove(idx);
+  }
+}
+
+// ═══ MOVE WITH ANIMATION ═══
+async function doMove(pitIdx) {
+  animating = true;
+  renderBoard(); // freeze state
+
+  const myStore = turn === 0 ? STORE_P1 : STORE_P2;
+  const oppStore = turn === 0 ? STORE_P2 : STORE_P1;
+  const stones = board[pitIdx];
+  const colors = stoneColors[pitIdx].splice(0, stones);
+  board[pitIdx] = 0;
+
+  // Update source pit immediately
+  renderSlot(pitIdx);
+
+  let pos = pitIdx;
+  let lastPos = pitIdx;
+  for (let i = 0; i < stones; i++) {
+    pos = (pos + 1) % TOTAL;
+    if (pos === oppStore) pos = (pos + 1) % TOTAL; // skip opponent store
+    lastPos = pos;
+
+    // Animate flying stone
+    await animateStone(pitIdx, pos, colors[i] ?? 0);
+
+    board[pos]++;
+    stoneColors[pos].push(colors[i] ?? 0);
+    renderSlot(pos);
+  }
+
+  // Check capture
+  const captured = checkCapture(lastPos, myStore);
+  if (captured) {
+    await sleep(200);
+    await animateCapture(captured.from, captured.opp, myStore);
+  }
+
+  // Check extra turn
+  const extraTurn = (lastPos === myStore);
+  if (extraTurn) {
+    showExtra();
+    await sleep(500);
+  }
+
+  // Check game over
+  if (isGameOver()) {
+    await finishGame();
+    animating = false;
+    return;
+  }
+
+  if (!extraTurn) {
+    turn = 1 - turn;
+  }
+  animating = false;
+  renderBoard();
+  updateUI();
+
+  // Bot turn
+  if (mode === "bot" && turn === 1) {
+    await sleep(500);
+    await doBotTurn();
+  }
+}
+
+function checkCapture(lastPos, myStore) {
+  const mySide = myStore === STORE_P1 ? [0,1,2,3,4,5] : [7,8,9,10,11,12];
+  if (!mySide.includes(lastPos)) return null;
+  if (board[lastPos] !== 1) return null; // must have been empty before
+  const opp = 12 - lastPos;
+  if (board[opp] === 0) return null;
+  return { from: lastPos, opp };
+}
+
+async function animateCapture(from, opp, store) {
+  // Move stones from opp + from to store
+  const oppStones = board[opp];
+  const oppColors = stoneColors[opp].splice(0);
+  board[opp] = 0;
+  renderSlot(opp);
+
+  // Animate opp stones to store
+  for (let i = 0; i < oppStones; i++) {
+    await animateStone(opp, store, oppColors[i] ?? 0, 120);
+    board[store]++;
+    stoneColors[store].push(oppColors[i] ?? 0);
+    renderSlot(store);
+  }
+
+  // Move the capturing stone too
+  const myColor = stoneColors[from].pop();
+  board[from]--;
+  renderSlot(from);
+
+  await animateStone(from, store, myColor ?? 0, 120);
+  board[store]++;
+  stoneColors[store].push(myColor ?? 0);
+  renderSlot(store);
+}
+
+function renderSlot(idx) {
+  const countEl = document.getElementById("count-" + idx);
+  const swEl = document.getElementById("sw-" + idx);
+  if (!countEl || !swEl) return;
+  countEl.textContent = board[idx];
+  swEl.innerHTML = "";
+  const colors = stoneColors[idx] || [];
+  for (let j = 0; j < board[idx]; j++) {
+    const s = document.createElement("div");
+    s.className = "stone stone-c" + (colors[j] ?? (j % 6));
+    swEl.appendChild(s);
+  }
+}
+
+// ═══ ANIMATION HELPERS ═══
+function animateStone(fromIdx, toIdx, color, duration) {
+  const dur = duration || ANIM_DELAY;
+  return new Promise((resolve) => {
+    const fromEl = pitEls[fromIdx];
+    const toEl = pitEls[toIdx];
+    if (!fromEl || !toEl) { resolve(); return; }
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+
+    const stone = document.createElement("div");
+    stone.className = "flying-stone stone-c" + color;
+    stone.style.left = (fromRect.left + fromRect.width / 2 - 6) + "px";
+    stone.style.top = (fromRect.top + fromRect.height / 2 - 6) + "px";
+    stone.style.transitionDuration = dur + "ms";
+    document.body.appendChild(stone);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        stone.style.left = (toRect.left + toRect.width / 2 - 6 + (Math.random() - .5) * 8) + "px";
+        stone.style.top = (toRect.top + toRect.height / 2 - 6 + (Math.random() - .5) * 8) + "px";
+      });
+    });
+
+    setTimeout(() => {
+      stone.remove();
+      resolve();
+    }, dur + 30);
+  });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ═══ GAME OVER ═══
+function isGameOver() {
+  const p1Empty = board.slice(0, PITS_PER_SIDE).every(n => n === 0);
+  const p2Empty = board.slice(7, 13).every(n => n === 0);
+  return p1Empty || p2Empty;
+}
+
+async function finishGame() {
+  // Sweep remaining stones
+  for (let i = 0; i < PITS_PER_SIDE; i++) {
+    if (board[i] > 0) {
+      const c = stoneColors[i].splice(0);
+      const n = board[i];
+      board[i] = 0;
+      renderSlot(i);
+      for (let j = 0; j < n; j++) {
+        await animateStone(i, STORE_P1, c[j] ?? 0, 100);
+        board[STORE_P1]++;
+        stoneColors[STORE_P1].push(c[j] ?? 0);
+        renderSlot(STORE_P1);
+      }
+    }
+    const k = i + 7;
+    if (board[k] > 0) {
+      const c = stoneColors[k].splice(0);
+      const n = board[k];
+      board[k] = 0;
+      renderSlot(k);
+      for (let j = 0; j < n; j++) {
+        await animateStone(k, STORE_P2, c[j] ?? 0, 100);
+        board[STORE_P2]++;
+        stoneColors[STORE_P2].push(c[j] ?? 0);
+        renderSlot(STORE_P2);
+      }
+    }
+  }
+  renderBoard();
+  updateUI();
+  await sleep(600);
+  showWinner();
+}
+
+function showWinner() {
+  const s1 = board[STORE_P1];
+  const s2 = board[STORE_P2];
+  const trophy = document.getElementById("w-trophy");
+  const title = document.getElementById("w-title");
+  const scores = document.getElementById("w-scores");
+
+  if (s1 > s2) {
+    trophy.textContent = "🏆";
+    title.textContent = mode === "bot" ? "Vyhrál jsi!" : "Hráč 1 vyhrál!";
+    title.style.color = "var(--accent2)";
+  } else if (s2 > s1) {
+    trophy.textContent = mode === "bot" ? "😔" : "🏆";
+    title.textContent = mode === "bot" ? "Bot vyhrál" : "Hráč 2 vyhrál!";
+    title.style.color = "var(--green)";
+  } else {
+    trophy.textContent = "🤝";
+    title.textContent = "Remíza!";
+    title.style.color = "var(--amber)";
+  }
+  scores.textContent = `${board[STORE_P1]} : ${board[STORE_P2]}`;
+  winOverlay.classList.add("show");
+}
+
+// ═══ BOT AI (Minimax + Alpha-Beta) ═══
+async function doBotTurn() {
+  if (turn !== 1 || mode !== "bot") return;
+  const move = bestMove(board, botDepth);
+  if (move === -1) return;
+  await doMove(move);
+}
+
+function bestMove(b, depth) {
+  const moves = validMoves(b, 1);
+  if (moves.length === 0) return -1;
+  let best = -Infinity;
+  let pick = moves[0];
+  for (const m of moves) {
+    const { board: nb, extra } = simulate(b, m, 1);
+    const val = extra
+      ? minimax(nb, depth - 1, -Infinity, Infinity, true)
+      : minimax(nb, depth - 1, -Infinity, Infinity, false);
+    if (val > best) { best = val; pick = m; }
+  }
+  return pick;
+}
+
+function minimax(b, depth, alpha, beta, isMax) {
+  if (depth === 0 || gameOverCheck(b)) return evaluate(b);
+  const player = isMax ? 1 : 0;
+  const moves = validMoves(b, player);
+  if (moves.length === 0) return evaluate(b);
+
+  if (isMax) {
+    let val = -Infinity;
+    for (const m of moves) {
+      const { board: nb, extra } = simulate(b, m, player);
+      val = Math.max(val, minimax(nb, depth - 1, alpha, beta, extra ? true : false));
+      alpha = Math.max(alpha, val);
+      if (beta <= alpha) break;
+    }
+    return val;
+  } else {
+    let val = Infinity;
+    for (const m of moves) {
+      const { board: nb, extra } = simulate(b, m, player);
+      val = Math.min(val, minimax(nb, depth - 1, alpha, beta, extra ? false : true));
+      beta = Math.min(beta, val);
+      if (beta <= alpha) break;
+    }
+    return val;
+  }
+}
+
+function evaluate(b) {
+  return b[STORE_P2] - b[STORE_P1];
+}
+
+function validMoves(b, player) {
+  const start = player === 0 ? 0 : 7;
+  const end = start + PITS_PER_SIDE;
+  const moves = [];
+  for (let i = start; i < end; i++) {
+    if (b[i] > 0) moves.push(i);
+  }
+  return moves;
+}
+
+function simulate(b, pitIdx, player) {
+  const nb = b.slice();
+  const myStore = player === 0 ? STORE_P1 : STORE_P2;
+  const oppStore = player === 0 ? STORE_P2 : STORE_P1;
+  const stones = nb[pitIdx];
+  nb[pitIdx] = 0;
+  let pos = pitIdx;
+  let lastPos = pitIdx;
+  for (let i = 0; i < stones; i++) {
+    pos = (pos + 1) % TOTAL;
+    if (pos === oppStore) pos = (pos + 1) % TOTAL;
+    nb[pos]++;
+    lastPos = pos;
+  }
+  // Capture
+  const mySide = player === 0 ? [0,1,2,3,4,5] : [7,8,9,10,11,12];
+  if (mySide.includes(lastPos) && nb[lastPos] === 1) {
+    const opp = 12 - lastPos;
+    if (nb[opp] > 0) {
+      nb[myStore] += nb[opp] + 1;
+      nb[opp] = 0;
+      nb[lastPos] = 0;
+    }
+  }
+  return { board: nb, extra: lastPos === myStore };
+}
+
+function gameOverCheck(b) {
+  return b.slice(0, PITS_PER_SIDE).every(n => n === 0)
+      || b.slice(7, 13).every(n => n === 0);
+}
+</script>
+</body>
+</html>
