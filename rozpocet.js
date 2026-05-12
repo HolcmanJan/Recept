@@ -1,13 +1,15 @@
-// Rozpočet – sledování měsíčního rozpočtu (období 14. – 14.)
+// Rozpočet – sledování měsíčního rozpočtu (výchozí období 14. – 13., s možností vlastního začátku)
 import { db } from "./firebase-init.js";
 import {
     doc,
     setDoc,
+    getDoc,
     onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { initNavigation } from "./navigation.js";
 
 const STORAGE_KEY = "recept.budget.v1";
+const CUSTOM_STARTS_KEY = "recept.budget.customStarts";
 const STEP = 10;
 const STEP_LG = 50;
 
@@ -20,6 +22,7 @@ let periodEnd = null;
 let periodDays = [];
 let periodOffset = 0; // 0 = aktuální, -1 = předchozí, …
 let openDay = null;
+let customStarts = [];
 
 // ----- DOM -----
 const periodEl = document.getElementById("budget-period");
@@ -33,23 +36,64 @@ const statSpentEl = document.getElementById("stat-spent");
 const statRemainingValueEl = document.getElementById("stat-remaining-value");
 const statRemainingArrowEl = document.getElementById("stat-remaining-arrow");
 const statDailyEl = document.getElementById("stat-daily");
+const newMonthBtn = document.getElementById("new-month-btn");
 
 // ----- Období -----
-function computePeriod(offset) {
+function buildBoundaries() {
     const now = new Date();
-    let y = now.getFullYear();
-    let m = now.getMonth();
+    const natural = new Set();
+    for (let m = -36; m <= 24; m++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + m, 14);
+        natural.add(fmtDate(d));
+    }
+    for (const cs of customStarts) {
+        const [y, mo, d] = cs.split("-").map(Number);
+        const csDate = new Date(y, mo - 1, d);
+        if (csDate.getDate() === 14) continue;
+        let next14;
+        if (csDate.getDate() < 14) {
+            next14 = new Date(csDate.getFullYear(), csDate.getMonth(), 14);
+        } else {
+            next14 = new Date(csDate.getFullYear(), csDate.getMonth() + 1, 14);
+        }
+        natural.delete(fmtDate(next14));
+    }
+    const all = [...natural, ...customStarts];
+    all.sort();
+    return [...new Set(all)];
+}
 
-    // Zjisti základní měsíc (aktuální období)
-    if (now.getDate() < 14) m -= 1;
+function findCurrentIndex(boundaries) {
+    const today = fmtDate(new Date());
+    for (let i = boundaries.length - 1; i >= 0; i--) {
+        if (boundaries[i] <= today) return i;
+    }
+    return 0;
+}
 
-    // Posuň o offset
-    m += offset;
+function computePeriod(offset) {
+    const boundaries = buildBoundaries();
+    const curIdx = findCurrentIndex(boundaries);
+    const targetIdx = curIdx + offset;
 
-    // Normalizuj rok/měsíc
-    const baseDate = new Date(y, m, 14);
-    periodStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), 14);
-    periodEnd = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 13);
+    if (targetIdx < 0 || targetIdx >= boundaries.length) return;
+
+    const startStr = boundaries[targetIdx];
+    const [sy, sm, sd] = startStr.split("-").map(Number);
+    periodStart = new Date(sy, sm - 1, sd);
+
+    if (targetIdx + 1 < boundaries.length) {
+        const endStr = boundaries[targetIdx + 1];
+        const [ey, em, ed] = endStr.split("-").map(Number);
+        periodEnd = new Date(ey, em - 1, ed);
+        periodEnd.setDate(periodEnd.getDate() - 1);
+    } else {
+        if (periodStart.getDate() < 14) {
+            periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth(), 13);
+        } else {
+            periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 13);
+        }
+    }
 
     periodDays = [];
     const d = new Date(periodStart);
@@ -187,10 +231,16 @@ function goToPeriod(offset) {
     openDay = null;
     computePeriod(periodOffset);
 
-    // Aktualizuj tlačítko "Aktuální období"
     todayBtn.classList.toggle("hidden", isCurrentPeriod());
+    updateNewMonthBtn();
 
     loadPeriodData();
+}
+
+function updateNewMonthBtn() {
+    const today = fmtDate(new Date());
+    const isFirst = today === fmtDate(periodStart);
+    newMonthBtn.classList.toggle("hidden", !isCurrentPeriod() || isFirst);
 }
 
 function loadPeriodData() {
@@ -452,6 +502,91 @@ function fmtMoney(n) {
     return n.toLocaleString("cs-CZ") + " Kč";
 }
 
+// ----- Vlastní začátky období -----
+function loadCustomStartsLocal() {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_STARTS_KEY) || "[]"); }
+    catch { return []; }
+}
+
+function saveCustomStartsLocal(starts) {
+    localStorage.setItem(CUSTOM_STARTS_KEY, JSON.stringify(starts));
+}
+
+async function loadCustomStartsFirestore() {
+    if (!currentUser) return;
+    try {
+        const ref = doc(db, "users", currentUser.uid, "budget", "_meta");
+        const snap = await getDoc(ref);
+        if (snap.exists() && Array.isArray(snap.data().customStarts)) {
+            customStarts = snap.data().customStarts;
+            saveCustomStartsLocal(customStarts);
+        }
+    } catch (err) { console.error("Failed to load custom starts:", err); }
+}
+
+async function persistCustomStarts() {
+    saveCustomStartsLocal(customStarts);
+    if (currentUser) {
+        try {
+            const ref = doc(db, "users", currentUser.uid, "budget", "_meta");
+            await setDoc(ref, { customStarts });
+        } catch (err) { console.error("Failed to save custom starts:", err); }
+    }
+}
+
+async function startNewMonth() {
+    const today = fmtDate(new Date());
+    if (today === fmtDate(periodStart)) return;
+    if (!confirm("Ukončit aktuální období a začít nové od dneška?\n\nVýdaje od dneška budou přesunuty do nového období.")) return;
+
+    const expensesToMove = {};
+    const oldBudgetAmount = budgetData.amount || 0;
+    if (budgetData.expenses) {
+        for (const day of periodDays) {
+            if (day >= today && budgetData.expenses[day]) {
+                expensesToMove[day] = budgetData.expenses[day];
+                delete budgetData.expenses[day];
+            }
+        }
+    }
+
+    await persistBudgetData();
+
+    if (!customStarts.includes(today)) {
+        customStarts.push(today);
+        customStarts.sort();
+    }
+    await persistCustomStarts();
+
+    periodOffset = 0;
+    computePeriod(0);
+
+    let newBudget;
+    if (currentUser) {
+        try {
+            const ref = doc(db, "users", currentUser.uid, "budget", periodKey());
+            const snap = await getDoc(ref);
+            newBudget = snap.exists() ? { ...defaultBudget(), ...snap.data() } : defaultBudget();
+        } catch { newBudget = defaultBudget(); }
+    } else {
+        const allData = loadLocal();
+        newBudget = getBudgetForPeriod(allData);
+    }
+    newBudget.expenses = migrateExpenses(newBudget.expenses);
+
+    if (!newBudget.amount) newBudget.amount = oldBudgetAmount;
+
+    for (const [day, amount] of Object.entries(expensesToMove)) {
+        newBudget.expenses[day] = (newBudget.expenses[day] || 0) + amount;
+    }
+
+    budgetData = newBudget;
+    amountEl.value = budgetData.amount || "";
+    await persistBudgetData();
+
+    loadPeriodData();
+}
+
 // ----- Změna rozpočtu -----
 function onBudgetAmountChange() {
     budgetData.amount = parseFloat(amountEl.value) || 0;
@@ -465,11 +600,19 @@ amountEl.addEventListener("input", onBudgetAmountChange);
 prevBtn.addEventListener("click", () => goToPeriod(periodOffset - 1));
 nextBtn.addEventListener("click", () => goToPeriod(periodOffset + 1));
 todayBtn.addEventListener("click", () => goToPeriod(0));
+newMonthBtn.addEventListener("click", startNewMonth);
 
 // ----- Inicializace -----
+customStarts = loadCustomStartsLocal();
 computePeriod(0);
+updateNewMonthBtn();
 
-initNavigation("rozpocet", (user) => {
+initNavigation("rozpocet", async (user) => {
     currentUser = user;
+    if (user) {
+        await loadCustomStartsFirestore();
+        computePeriod(periodOffset);
+        updateNewMonthBtn();
+    }
     loadPeriodData();
 });
