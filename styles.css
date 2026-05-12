@@ -1528,6 +1528,25 @@ body.has-bottom-nav {
     background: rgba(37, 99, 235, 0.06);
 }
 
+.budget-newmonth-btn {
+    display: block;
+    margin: 0 auto 0.65rem;
+    padding: 0.25rem 0.85rem;
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.budget-newmonth-btn:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
 .budget-input-row {
     display: flex;
     align-items: center;
