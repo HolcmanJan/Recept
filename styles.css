@@ -3161,6 +3161,35 @@ body.has-bottom-nav {
     background: rgba(194, 65, 12, 0.06);
 }
 
+.fuel-new-person-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.fuel-new-person-input {
+    flex: 1;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.fuel-new-person-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.fuel-new-person-submit {
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
 .fuel-empty {
     color: var(--muted);
     font-size: 0.9rem;
@@ -3326,6 +3355,62 @@ body.has-bottom-nav {
 .fuel-action-danger:hover {
     color: #b91c1c;
     border-color: #fecaca;
+}
+
+.fuel-confirm-msg {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.fuel-menu-hint {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.fuel-entry-editing {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.fuel-edit-input {
+    flex: 1;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+    max-width: 100px;
+}
+
+.fuel-edit-input:focus {
+    outline: none;
+}
+
+.fuel-edit-save {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.8rem;
+    border-radius: 6px;
+}
+
+.fuel-rename-input {
+    flex: 1;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--primary);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.fuel-rename-input:focus {
+    outline: none;
 }
 
 @media (max-width: 480px) {
