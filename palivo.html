@@ -18,7 +18,7 @@
             <div class="fuel-input-row">
                 <label for="fuel-km">Kilometry</label>
                 <div class="fuel-input-wrap">
-                    <input type="number" id="fuel-km" min="0" step="1" placeholder="0" inputmode="decimal">
+                    <input type="number" id="fuel-km" min="0" step="any" placeholder="0" inputmode="decimal">
                     <span class="fuel-unit">km</span>
                 </div>
             </div>
@@ -32,14 +32,14 @@
             <div class="fuel-input-row">
                 <label for="fuel-consumption">Spotřeba</label>
                 <div class="fuel-input-wrap">
-                    <input type="number" id="fuel-consumption" min="0" step="0.1" placeholder="7.0" inputmode="decimal">
+                    <input type="number" id="fuel-consumption" min="0" step="any" placeholder="7.0" inputmode="decimal">
                     <span class="fuel-unit">l/100km</span>
                 </div>
             </div>
             <div class="fuel-input-row">
                 <label for="fuel-price">Cena za litr</label>
                 <div class="fuel-input-wrap">
-                    <input type="number" id="fuel-price" min="0" step="0.1" placeholder="38" inputmode="decimal">
+                    <input type="number" id="fuel-price" min="0" step="any" placeholder="38" inputmode="decimal">
                     <span class="fuel-unit">Kč</span>
                 </div>
             </div>
@@ -66,9 +66,12 @@
         <section class="fuel-people">
             <div class="fuel-people-header">
                 <h2>Osoby</h2>
-                <button type="button" id="fuel-add-person" class="fuel-add-person-btn">+ Nová osoba</button>
             </div>
             <div id="fuel-people-list"></div>
+            <div class="fuel-new-person-row" id="fuel-new-person-row">
+                <input type="text" id="fuel-new-person-name" class="fuel-new-person-input" placeholder="Jméno nové osoby…">
+                <button type="button" id="fuel-new-person-btn" class="btn btn-primary fuel-new-person-submit">Přidat</button>
+            </div>
         </section>
     </main>
 

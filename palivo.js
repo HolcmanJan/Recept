@@ -2,7 +2,6 @@ import { db } from "./firebase-init.js";
 import {
     doc,
     setDoc,
-    getDoc,
     onSnapshot,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { initNavigation } from "./navigation.js";
@@ -11,7 +10,7 @@ const STORAGE_KEY = "recept.palivo.v1";
 
 let currentUser = null;
 let unsubData = null;
-let data = null; // { consumption, pricePerLiter, people: [...] }
+let data = { consumption: 0, pricePerLiter: 0, people: [] };
 
 // DOM
 const kmEl = document.getElementById("fuel-km");
@@ -22,41 +21,41 @@ const totalEl = document.getElementById("fuel-total");
 const perPersonEl = document.getElementById("fuel-per-person");
 const assignBtn = document.getElementById("fuel-assign-btn");
 const assignMenu = document.getElementById("fuel-assign-menu");
-const addPersonBtn = document.getElementById("fuel-add-person");
 const peopleListEl = document.getElementById("fuel-people-list");
+const newPersonInput = document.getElementById("fuel-new-person-name");
+const newPersonBtn = document.getElementById("fuel-new-person-btn");
 
 // ----- Data -----
-function defaultData() {
-    return { consumption: 0, pricePerLiter: 0, people: [] };
-}
-
 function loadLocal() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+        if (!Array.isArray(parsed.people)) parsed.people = [];
+        return parsed;
+    } catch (e) { return null; }
 }
 
-function saveLocal(d) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
+function saveLocal() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 async function persist() {
+    if (!data) return;
     if (currentUser) {
-        const ref = doc(db, "users", currentUser.uid, "palivo", "data");
-        await setDoc(ref, data);
-    } else {
-        saveLocal(data);
+        try {
+            const ref = doc(db, "users", currentUser.uid, "palivo", "data");
+            await setDoc(ref, data);
+        } catch (e) { console.error(e); }
     }
+    saveLocal();
 }
 
 let saveTimeout = null;
 function debouncedSave() {
     clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
-        try { await persist(); }
-        catch (err) { console.error(err); }
-    }, 400);
+    saveTimeout = setTimeout(() => persist(), 400);
 }
 
 function loadData() {
@@ -66,21 +65,24 @@ function loadData() {
         const ref = doc(db, "users", currentUser.uid, "palivo", "data");
         unsubData = onSnapshot(ref, (snap) => {
             if (snap.exists()) {
-                data = { ...defaultData(), ...snap.data() };
-                if (!Array.isArray(data.people)) data.people = [];
-            } else {
-                data = loadLocal() || defaultData();
+                const d = snap.data();
+                data.consumption = d.consumption || data.consumption || 0;
+                data.pricePerLiter = d.pricePerLiter || data.pricePerLiter || 0;
+                data.people = Array.isArray(d.people) ? d.people : data.people;
             }
             applyDataToInputs();
             renderPeople();
-        }, (err) => {
-            console.error("Firestore error:", err);
-            data = defaultData();
+        }, () => {
             applyDataToInputs();
             renderPeople();
         });
     } else {
-        data = loadLocal() || defaultData();
+        const saved = loadLocal();
+        if (saved) {
+            data.consumption = saved.consumption || 0;
+            data.pricePerLiter = saved.pricePerLiter || 0;
+            data.people = Array.isArray(saved.people) ? saved.people : [];
+        }
         applyDataToInputs();
         renderPeople();
     }
@@ -111,7 +113,7 @@ function onCalcInput() {
     recalc();
     const consumption = parseFloat(consEl.value) || 0;
     const price = parseFloat(priceEl.value) || 0;
-    if (data && (consumption !== data.consumption || price !== data.pricePerLiter)) {
+    if (consumption !== data.consumption || price !== data.pricePerLiter) {
         data.consumption = consumption;
         data.pricePerLiter = price;
         debouncedSave();
@@ -139,6 +141,15 @@ function closeAssignMenu() {
 
 function renderAssignMenu() {
     assignMenu.innerHTML = "";
+
+    if (data.people.length === 0) {
+        const hint = document.createElement("div");
+        hint.className = "fuel-menu-hint";
+        hint.textContent = "Nejprve vytvořte osobu níže.";
+        assignMenu.appendChild(hint);
+        return;
+    }
+
     data.people.forEach((person) => {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -150,16 +161,6 @@ function renderAssignMenu() {
         });
         assignMenu.appendChild(btn);
     });
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "fuel-menu-item fuel-menu-item-new";
-    addBtn.textContent = "+ Nová osoba";
-    addBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeAssignMenu();
-        promptNewPersonAndAssign();
-    });
-    assignMenu.appendChild(addBtn);
 }
 
 function getPerPerson() {
@@ -179,38 +180,28 @@ function assignToPerson(personId) {
     const person = data.people.find((p) => p.id === personId);
     if (!person) return;
 
+    if (!Array.isArray(person.entries)) person.entries = [];
     person.entries.unshift({
         id: uid(),
-        amount,
+        amount: amount,
         paid: false,
         date: todayStr(),
     });
-    debouncedSave();
-    renderPeople();
+
     expandedPersonId = personId;
+    debouncedSave();
     renderPeople();
 }
 
-function promptNewPersonAndAssign() {
-    const name = prompt("Jméno nové osoby:");
-    if (!name || !name.trim()) return;
+// ----- New person -----
+function addNewPerson() {
+    const name = newPersonInput.value.trim();
+    if (!name) return;
 
-    const person = {
-        id: uid(),
-        name: name.trim(),
-        entries: [],
-    };
+    const person = { id: uid(), name: name, entries: [] };
     data.people.push(person);
+    newPersonInput.value = "";
 
-    const amount = getPerPerson();
-    if (amount > 0) {
-        person.entries.push({
-            id: uid(),
-            amount,
-            paid: false,
-            date: todayStr(),
-        });
-    }
     debouncedSave();
     expandedPersonId = person.id;
     renderPeople();
@@ -218,11 +209,15 @@ function promptNewPersonAndAssign() {
 
 // ----- People list -----
 let expandedPersonId = null;
+let editingEntryId = null;
+let renamingPersonId = null;
+let confirmDeleteId = null;
 
 function renderPeople() {
     peopleListEl.innerHTML = "";
-    if (!data || data.people.length === 0) {
-        peopleListEl.innerHTML = '<p class="fuel-empty">Zatím žádné osoby.</p>';
+
+    if (data.people.length === 0) {
+        peopleListEl.innerHTML = '<p class="fuel-empty">Zatím žádné osoby. Zadejte jméno níže.</p>';
         return;
     }
 
@@ -230,9 +225,8 @@ function renderPeople() {
         const card = document.createElement("div");
         card.className = "fuel-person-card";
 
-        const unpaid = person.entries
-            .filter((e) => !e.paid)
-            .reduce((s, e) => s + e.amount, 0);
+        if (!Array.isArray(person.entries)) person.entries = [];
+        const unpaid = person.entries.filter((e) => !e.paid).reduce((s, e) => s + e.amount, 0);
 
         const header = document.createElement("button");
         header.type = "button";
@@ -259,12 +253,13 @@ function renderPeople() {
         header.appendChild(nameSpan);
         header.appendChild(totalSpan);
         header.appendChild(arrow);
-
         header.addEventListener("click", () => {
             expandedPersonId = expandedPersonId === person.id ? null : person.id;
+            editingEntryId = null;
+            renamingPersonId = null;
+            confirmDeleteId = null;
             renderPeople();
         });
-
         card.appendChild(header);
 
         if (expandedPersonId === person.id) {
@@ -282,25 +277,7 @@ function renderPeople() {
                 });
             }
 
-            const actions = document.createElement("div");
-            actions.className = "fuel-person-actions";
-
-            const renameBtn = document.createElement("button");
-            renameBtn.type = "button";
-            renameBtn.className = "fuel-action-btn";
-            renameBtn.textContent = "Přejmenovat";
-            renameBtn.addEventListener("click", () => renamePerson(person));
-
-            const deleteBtn = document.createElement("button");
-            deleteBtn.type = "button";
-            deleteBtn.className = "fuel-action-btn fuel-action-danger";
-            deleteBtn.textContent = "Smazat osobu";
-            deleteBtn.addEventListener("click", () => deletePerson(person));
-
-            actions.appendChild(renameBtn);
-            actions.appendChild(deleteBtn);
-            body.appendChild(actions);
-
+            body.appendChild(renderPersonActions(person));
             card.appendChild(body);
         }
 
@@ -309,6 +286,10 @@ function renderPeople() {
 }
 
 function renderEntry(person, entry) {
+    if (editingEntryId === entry.id) {
+        return renderEntryEdit(person, entry);
+    }
+
     const row = document.createElement("div");
     row.className = "fuel-entry" + (entry.paid ? " fuel-entry-paid" : "");
 
@@ -338,11 +319,12 @@ function renderEntry(person, entry) {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "fuel-entry-btn";
-    editBtn.title = "Upravit částku";
+    editBtn.title = "Upravit";
     editBtn.textContent = "✎";
     editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        editEntry(person, entry);
+        editingEntryId = entry.id;
+        renderPeople();
     });
 
     const delBtn = document.createElement("button");
@@ -352,7 +334,9 @@ function renderEntry(person, entry) {
     delBtn.textContent = "✕";
     delBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        deleteEntry(person, entry);
+        person.entries = person.entries.filter((x) => x.id !== entry.id);
+        debouncedSave();
+        renderPeople();
     });
 
     actionsDiv.appendChild(paidBtn);
@@ -362,42 +346,133 @@ function renderEntry(person, entry) {
     row.appendChild(dateSpan);
     row.appendChild(amountSpan);
     row.appendChild(actionsDiv);
-
     return row;
 }
 
-// ----- Entry actions -----
-function editEntry(person, entry) {
-    const val = prompt("Nová částka:", entry.amount);
-    if (val === null) return;
-    const num = parseInt(val);
-    if (isNaN(num) || num < 0) return;
-    entry.amount = num;
-    debouncedSave();
-    renderPeople();
+function renderEntryEdit(person, entry) {
+    const row = document.createElement("div");
+    row.className = "fuel-entry fuel-entry-editing";
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "fuel-edit-input";
+    input.value = entry.amount;
+    input.min = "0";
+    input.step = "any";
+    input.inputMode = "decimal";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "btn btn-primary fuel-edit-save";
+    saveBtn.textContent = "Uložit";
+    saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const val = parseInt(input.value);
+        if (!isNaN(val) && val >= 0) {
+            entry.amount = val;
+            debouncedSave();
+        }
+        editingEntryId = null;
+        renderPeople();
+    });
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "fuel-action-btn";
+    cancelBtn.textContent = "Zrušit";
+    cancelBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        editingEntryId = null;
+        renderPeople();
+    });
+
+    row.appendChild(input);
+    row.appendChild(saveBtn);
+    row.appendChild(cancelBtn);
+
+    setTimeout(() => input.focus(), 10);
+    return row;
 }
 
-function deleteEntry(person, entry) {
-    if (!confirm("Smazat záznam " + fmtMoney(entry.amount) + "?")) return;
-    person.entries = person.entries.filter((e) => e.id !== entry.id);
-    debouncedSave();
-    renderPeople();
-}
+function renderPersonActions(person) {
+    const wrap = document.createElement("div");
+    wrap.className = "fuel-person-actions";
 
-function renamePerson(person) {
-    const name = prompt("Nové jméno:", person.name);
-    if (!name || !name.trim()) return;
-    person.name = name.trim();
-    debouncedSave();
-    renderPeople();
-}
+    if (renamingPersonId === person.id) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "fuel-rename-input";
+        input.value = person.name;
+        input.placeholder = "Nové jméno";
 
-function deletePerson(person) {
-    if (!confirm("Smazat osobu „" + person.name + "" a všechny její záznamy?")) return;
-    data.people = data.people.filter((p) => p.id !== person.id);
-    if (expandedPersonId === person.id) expandedPersonId = null;
-    debouncedSave();
-    renderPeople();
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "btn btn-primary fuel-edit-save";
+        saveBtn.textContent = "Uložit";
+        saveBtn.addEventListener("click", () => {
+            const v = input.value.trim();
+            if (v) { person.name = v; debouncedSave(); }
+            renamingPersonId = null;
+            renderPeople();
+        });
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "fuel-action-btn";
+        cancelBtn.textContent = "Zrušit";
+        cancelBtn.addEventListener("click", () => { renamingPersonId = null; renderPeople(); });
+
+        wrap.appendChild(input);
+        wrap.appendChild(saveBtn);
+        wrap.appendChild(cancelBtn);
+        setTimeout(() => input.focus(), 10);
+        return wrap;
+    }
+
+    if (confirmDeleteId === person.id) {
+        const msg = document.createElement("span");
+        msg.className = "fuel-confirm-msg";
+        msg.textContent = "Smazat „" + person.name + ""?";
+
+        const yesBtn = document.createElement("button");
+        yesBtn.type = "button";
+        yesBtn.className = "fuel-action-btn fuel-action-danger";
+        yesBtn.textContent = "Ano, smazat";
+        yesBtn.addEventListener("click", () => {
+            data.people = data.people.filter((p) => p.id !== person.id);
+            expandedPersonId = null;
+            confirmDeleteId = null;
+            debouncedSave();
+            renderPeople();
+        });
+
+        const noBtn = document.createElement("button");
+        noBtn.type = "button";
+        noBtn.className = "fuel-action-btn";
+        noBtn.textContent = "Zrušit";
+        noBtn.addEventListener("click", () => { confirmDeleteId = null; renderPeople(); });
+
+        wrap.appendChild(msg);
+        wrap.appendChild(yesBtn);
+        wrap.appendChild(noBtn);
+        return wrap;
+    }
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "fuel-action-btn";
+    renameBtn.textContent = "Přejmenovat";
+    renameBtn.addEventListener("click", () => { renamingPersonId = person.id; renderPeople(); });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "fuel-action-btn fuel-action-danger";
+    deleteBtn.textContent = "Smazat osobu";
+    deleteBtn.addEventListener("click", () => { confirmDeleteId = person.id; renderPeople(); });
+
+    wrap.appendChild(renameBtn);
+    wrap.appendChild(deleteBtn);
+    return wrap;
 }
 
 // ----- Utils -----
@@ -407,10 +482,7 @@ function uid() {
 
 function todayStr() {
     const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return yyyy + "-" + mm + "-" + dd;
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 
 function fmtDateCZ(dateStr) {
@@ -427,6 +499,10 @@ kmEl.addEventListener("input", onCalcInput);
 passEl.addEventListener("input", onCalcInput);
 consEl.addEventListener("input", onCalcInput);
 priceEl.addEventListener("input", onCalcInput);
+kmEl.addEventListener("change", onCalcInput);
+passEl.addEventListener("change", onCalcInput);
+consEl.addEventListener("change", onCalcInput);
+priceEl.addEventListener("change", onCalcInput);
 
 assignBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -437,15 +513,21 @@ document.addEventListener("click", () => {
     if (menuOpen) closeAssignMenu();
 });
 
-addPersonBtn.addEventListener("click", () => {
-    const name = prompt("Jméno nové osoby:");
-    if (!name || !name.trim()) return;
-    data.people.push({ id: uid(), name: name.trim(), entries: [] });
-    debouncedSave();
-    renderPeople();
+newPersonBtn.addEventListener("click", addNewPerson);
+newPersonInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addNewPerson();
 });
 
 // ----- Init -----
+const saved = loadLocal();
+if (saved) {
+    data.consumption = saved.consumption || 0;
+    data.pricePerLiter = saved.pricePerLiter || 0;
+    data.people = Array.isArray(saved.people) ? saved.people : [];
+}
+applyDataToInputs();
+renderPeople();
+
 initNavigation("home", (user) => {
     currentUser = user;
     loadData();
