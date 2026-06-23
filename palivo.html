@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palivo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container header-inner">
+            <h1>Palivo</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="fuel-calc">
+            <div class="fuel-input-row">
+                <label for="fuel-km">Kilometry</label>
+                <div class="fuel-input-wrap">
+                    <input type="number" id="fuel-km" min="0" step="1" placeholder="0" inputmode="decimal">
+                    <span class="fuel-unit">km</span>
+                </div>
+            </div>
+            <div class="fuel-input-row">
+                <label for="fuel-passengers">Cestující</label>
+                <div class="fuel-input-wrap">
+                    <input type="number" id="fuel-passengers" min="1" step="1" value="1" inputmode="numeric">
+                    <span class="fuel-unit">os.</span>
+                </div>
+            </div>
+            <div class="fuel-input-row">
+                <label for="fuel-consumption">Spotřeba</label>
+                <div class="fuel-input-wrap">
+                    <input type="number" id="fuel-consumption" min="0" step="0.1" placeholder="7.0" inputmode="decimal">
+                    <span class="fuel-unit">l/100km</span>
+                </div>
+            </div>
+            <div class="fuel-input-row">
+                <label for="fuel-price">Cena za litr</label>
+                <div class="fuel-input-wrap">
+                    <input type="number" id="fuel-price" min="0" step="0.1" placeholder="38" inputmode="decimal">
+                    <span class="fuel-unit">Kč</span>
+                </div>
+            </div>
+
+            <div class="fuel-result" id="fuel-result">
+                <div class="fuel-result-row">
+                    <span>Celkem</span>
+                    <strong id="fuel-total">0 Kč</strong>
+                </div>
+                <div class="fuel-result-row fuel-result-highlight">
+                    <span>Na osobu</span>
+                    <strong id="fuel-per-person">0 Kč</strong>
+                </div>
+            </div>
+
+            <div class="fuel-assign" id="fuel-assign">
+                <button type="button" id="fuel-assign-btn" class="btn btn-primary fuel-assign-btn" disabled>
+                    Přidat k osobě
+                </button>
+                <div class="fuel-assign-menu hidden" id="fuel-assign-menu"></div>
+            </div>
+        </section>
+
+        <section class="fuel-people">
+            <div class="fuel-people-header">
+                <h2>Osoby</h2>
+                <button type="button" id="fuel-add-person" class="fuel-add-person-btn">+ Nová osoba</button>
+            </div>
+            <div id="fuel-people-list"></div>
+        </section>
+    </main>
+
+    <script type="module" src="palivo.js"></script>
+</body>
+</html>
