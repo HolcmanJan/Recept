@@ -432,7 +432,7 @@ function renderPersonActions(person) {
     if (confirmDeleteId === person.id) {
         const msg = document.createElement("span");
         msg.className = "fuel-confirm-msg";
-        msg.textContent = "Smazat „" + person.name + ""?";
+        msg.textContent = `Smazat „${person.name}“?`;
 
         const yesBtn = document.createElement("button");
         yesBtn.type = "button";
